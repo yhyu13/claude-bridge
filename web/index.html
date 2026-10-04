@@ -1,0 +1,60 @@
+﻿<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1">
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>claude-bridge</title>
+<link rel="stylesheet" href="style.css?v=12">
+</head>
+<body>
+
+<header id="bar">
+  <div class="row1">
+    <span id="dot" class="dot off" title="连接状态"></span>
+    <span id="link" class="link">连接中…</span>
+    <button id="modelbtn" class="modelbtn" type="button" title="点击查看/切换后端">
+      <span id="model" class="model"></span>
+      <span id="backend" class="backend"></span>
+    </button>
+    <button id="kill" class="kill" type="button" title="杀掉电脑上的 claude 进程">紧急停止</button>
+  </div>
+  <div class="row2">
+    <span id="cwd" class="cwd" title="">—</span>
+    <span id="stats" class="stats">0 轮</span>
+    <span id="cost" class="cost"></span>
+  </div>
+</header>
+
+<div id="alerts"></div>
+
+<!-- Backend switcher. A switch restarts the claude child process, so the cost
+     is a lost conversation — that warning is part of the panel, not a footnote. -->
+<div id="sheet" class="sheet" hidden>
+  <div class="sheetbox">
+    <div class="sheettitle">切换 claude 后端</div>
+    <div id="backends" class="backends"></div>
+    <div class="sheetwarn">切换会重启电脑上的 claude 进程，<b>当前对话上下文会清空</b>。</div>
+    <button id="sheetclose" class="sheetclose" type="button">关闭</button>
+  </div>
+</div>
+
+<main id="log"></main>
+
+<button id="jump" class="jump" type="button" hidden>↓ 回到最新</button>
+
+<footer id="composer">
+  <div id="status" class="status"><span id="statusdot" class="spinner" hidden></span><span id="statustext"></span></div>
+  <div class="row">
+    <textarea id="input" rows="1" placeholder="给 Claude 发消息…" autocomplete="off" autocapitalize="sentences"></textarea>
+    <button id="abort" class="abort" type="button" title="中止当前轮次" aria-label="中止当前轮次">■</button>
+    <button id="send" class="send" type="button">发送</button>
+  </div>
+</footer>
+
+<!-- v: bump whenever app.js / style.css change, or the phone keeps a stale copy -->
+<script src="app.js?v=12"></script>
+</body>
+</html>

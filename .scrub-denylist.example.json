@@ -1,0 +1,18 @@
+{
+  "_note": "本机专用的补充脱敏规则模板。复制成 .scrub-denylist.json（这个文件是 gitignore 的）再按自己的情况填。",
+
+  "_why": "scrub-fixture.js 自带的通用规则只能覆盖「任何机器都成立」的形态：家目录、Desktop、UUID、tool_use id、目录 slug。你这台机器特有的项目名、用户名、内部集成名、中转域名，通用规则认不出来——但它们恰恰是最该藏的。这些只能靠你手工列出来。",
+
+  "_how": "把你抓包时看到的、属于本机又不想公开的词逐个写进 strings；本机特有的绝对路径写进 paths（从长到短排列，先命中先生效）。改完跑 npm run verify:scrub 复查。",
+
+  "strings": [
+    "你的用户名",
+    "你的项目名",
+    "你公司内部 MCP server 的名字"
+  ],
+
+  "paths": {
+    "D:\\work\\my-project\\subdir": "C:\\work\\project",
+    "D:\\work\\my-project": "C:\\work\\project"
+  }
+}

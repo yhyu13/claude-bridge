@@ -1,0 +1,21 @@
+{
+  "name": "claude-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Let an Android phone drive the Claude Code CLI on this machine, over the internet.",
+  "main": "src/bridge.js",
+  "scripts": {
+    "start": "node src/bridge.js",
+    "verify": "node tools/verify-translator.js && node tools/verify-md.js && node tools/verify-wiring.js && node tools/verify-backend.js",
+    "verify:2turn": "node tools/verify-2turn.js",
+    "verify:md": "node tools/verify-md.js",
+    "verify:wiring": "node tools/verify-wiring.js",
+    "verify:backend": "node tools/verify-backend.js",
+    "verify:scrub": "node tools/scrub-fixture.js --check docs/protocol-sample.ndjson tools/fixtures/tool-call.ndjson",
+    "verify:scan": "node tools/scan-secrets.js",
+    "verify:quick": "node tools/verify-translator.js && node tools/verify-md.js && node tools/verify-wiring.js && node tools/scrub-fixture.js --check docs/protocol-sample.ndjson tools/fixtures/tool-call.ndjson && node tools/scan-secrets.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

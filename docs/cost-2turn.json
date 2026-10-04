@@ -1,0 +1,53 @@
+{
+  "_note": "Two `result` events captured from ONE claude process, trimmed to the fields the cost logic reads. Line 2 was written to stdin only after line 1's result arrived. This file exists to pin down one measured fact: total_cost_usd is CUMULATIVE for the process session, while result.usage is PER-TURN. It is the input to the cost-delta assertions in tools/verify-translator.js -- do not hand-edit the numbers, re-derive them with a probe if the backend changes.",
+  "results": [
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "result_index": 0,
+      "num_turns": 1,
+      "duration_ms": 9211,
+      "total_cost_usd": 0.024609600000000002,
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 0,
+        "cache_read_input_tokens": 116208,
+        "output_tokens": 68
+      },
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 2,
+          "outputTokens": 68,
+          "cacheReadInputTokens": 116208,
+          "cacheCreationInputTokens": 0,
+          "costUSD": 0.024609600000000002
+        }
+      }
+    },
+    {
+      "type": "result",
+      "subtype": "success",
+      "is_error": false,
+      "result_index": 1,
+      "num_turns": 1,
+      "duration_ms": 6021,
+      "total_cost_usd": 0.6398076,
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 123018,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 5
+      },
+      "modelUsage": {
+        "claude-opus-5-5": {
+          "inputTokens": 4,
+          "outputTokens": 73,
+          "cacheReadInputTokens": 116208,
+          "cacheCreationInputTokens": 123018,
+          "costUSD": 0.6398076
+        }
+      }
+    }
+  ]
+}

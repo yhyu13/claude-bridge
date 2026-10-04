@@ -1,0 +1,70 @@
+{
+  "port": 8787,
+
+  "_host": "绑哪个网卡。三个选项，安全性和可达性各不相同：",
+  "_host_tailscale": "  \"tailscale\"  = 只绑 Tailscale 虚拟网卡。公网能连，同一局域网的人反而连不上。推荐。",
+  "_host_local":   "  \"127.0.0.1\"  = 只绑本机。最安全，但手机必须用 adb reverse 走 USB。",
+  "_host_any":     "  \"0.0.0.0\"   = 绑所有网卡。同一 Wi-Fi 下任何设备都能连，除非你另有鉴权，否则别用。",
+  "_host_resolve": "  \"tailscale\" 是启动时调用 `tailscale ip -4` 动态解析的，不写死 IP。",
+  "_host_fail":    "  Tailscale 没登录时桥接会直接报错退出，而不是静默降级到 127.0.0.1 —— 这是故意的。",
+  "host": "tailscale",
+
+  "_workdir": "Claude 的工作目录。它只是 cwd，不是沙箱：Claude 仍然能读写整个文件系统。",
+  "workdir": "C:\\path\\to\\your\\project",
+
+  "_claudeBin": "claude 可执行文件路径。留 null 则从 PATH 里找。",
+  "claudeBin": null,
+
+  "_model": "留 null = 不传 --model，让 CLI 用它自己的默认模型。",
+  "_modelWarn": "显式传 --model 会让某些中转网关挂死（实测），除非你确认自己的链路没问题，否则保持 null。",
+  "model": null,
+
+  "_allowedTools": "逗号分隔。给远程端开放的能力 = 这里列的全部。",
+  "_allowedToolsWarn": "包含 Bash 就等于把 shell 交给远程的人。去掉 Bash 会安全很多，但也失去大部分实用性。",
+  "allowedTools": "Read,Edit,Write,Glob,Grep,Bash",
+
+  "_idleTimeoutMin": "多少分钟没有新消息就关掉 claude 子进程省内存。下次发消息会自动重启。",
+  "idleTimeoutMin": 30,
+
+  "_turnTimeoutSec": "一轮超过多少秒没有任何结果，就判定为「连不上后端」并结束这一轮。",
+  "_turnTimeoutWhy": "实测两种后端故障完全不同：模型名错会在 6 秒内明确报错；而后端地址不通会静默 60 秒以上一个字都不吐。前者有信息，后者没有，所以需要这个看门狗，否则手机上就是一个永远转圈的圈。设 0 关闭。",
+  "turnTimeoutSec": 180,
+
+  "_backends": "可切换的 claude 后端。在手机顶部点模型名就能切。",
+  "_backendsHow": "经 --settings 注入。实测：设进程环境变量 ANTHROPIC_BASE_URL 会被 ~/.claude/settings.json 的 env 块覆盖而无效，--settings 才压得过。",
+  "_backendsCost": "切换会重启 claude 子进程，当轮对话上下文清空。",
+  "_backendsNote": "env 里可放 ANTHROPIC_BASE_URL / ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY 等。留空 {} = 沿用你 settings.json 里的默认配置（等于「官方」）。",
+  "backends": {
+    "official": {
+      "label": "官方 / settings.json 默认",
+      "env": {}
+    },
+    "relay": {
+      "label": "中转网关",
+      "env": {
+        "ANTHROPIC_BASE_URL": "https://your-relay.example.com/api"
+      }
+    }
+  },
+  "_activeBackend": "当前用哪个，对应 backends 里的 key",
+  "activeBackend": "official",
+
+  "_maxCostPerTurn": "单轮花费上限（美元）。null = 不限制。设为数字后超限会中止这一轮。",
+  "maxCostPerTurn": null,
+  "_maxCostPerDay": "每日花费上限（美元）。null = 不限制。",
+  "maxCostPerDay": null,
+
+  "_dangerousPatterns": "命中任意一条的命令会在 UI 上标红并自动展开。纯提示，不拦截。",
+  "_dangerousWarn": "这只是给人看的警告，不是沙箱。真正的边界是 allowedTools 和操作系统权限。",
+  "dangerousPatterns": [
+    "rm -rf",
+    "rm -fr",
+    "Remove-Item -Recurse -Force",
+    "del /f",
+    "format ",
+    "diskpart",
+    "git push --force",
+    "git push -f",
+    "git reset --hard"
+  ]
+}
