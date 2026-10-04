@@ -22,10 +22,12 @@
   "_modelSwitchWarn": "中转不提供「有哪些模型可查」的接口，models 只能自己填。填了它不认的名字不会静默失败——4-10 秒内会明确报 400 model platform is not recognized。",
   "model": null,
   "_models": "下面每一项可以是字符串，也可以是 {name, label}。name 传 null 表示「不传 --model」。label 只是手机上显示的字。",
+  "_modelsTip": "填别名（opus / sonnet / fable）比填全名稳：中转会改写模型名，写死全名反而可能哪天失效。名字填错了不会静默失败，4-10 秒内会明确报 400 model platform is not recognized。",
   "models": [
     { "name": null, "label": "CLI 默认" },
     { "name": "opus", "label": "Opus" },
-    { "name": "sonnet", "label": "Sonnet" }
+    { "name": "sonnet", "label": "Sonnet" },
+    { "name": "fable", "label": "Fable" }
   ],
 
   "_allowedTools": "逗号分隔。给远程端开放的能力 = 这里列的全部。",
