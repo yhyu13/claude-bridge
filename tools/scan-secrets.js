@@ -116,6 +116,9 @@ function main() {
       const where = `${f}:${i + 1}`;
 
       for (const d of DENY_STRINGS) {
+        // 版权署名天然是公开信息：许可证要求写明版权所有者，GitHub 用户名
+        // 本来就是公开的。按本文件自己的规矩，误报进白名单，不删规则。
+        if (f === 'LICENSE' && /^copyright\b/i.test(line.trim())) continue;
         if (line.includes(d)) findings.push({ where, kind: '本机身份串', value: d });
       }
       for (const [re, kind] of SHAPE_RULES) {

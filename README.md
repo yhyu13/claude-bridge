@@ -198,8 +198,10 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://$IP:8787/api/status"   # 期望
 | `src/claude-session.js` | 常驻进程 + 轮次队列 + 成本差分 |
 | `src/translator.js` | 纯函数翻译层（NDJSON → 桥接协议） |
 | `web/` | 手机网页，零构建原生 JS |
-| `tools/verify-*.js` | 三套测试，共 92 项 |
-| `tools/fixtures/` | 真实抓下来的协议样本，接线测试的基准 |
+| `tools/verify-*.js` | 四套功能测试，共 106 项 |
+| `tools/scrub-fixture.js` | 协议样本脱敏器。抓包样本带着你的 MCP 清单、skill 库和家目录路径，提交前必过 |
+| `tools/scan-secrets.js` | 提交前扫密钥与本机身份，扫的是 git index |
+| `tools/fixtures/` | 脱敏后的真实协议样本，接线测试的基准 |
 | `docs/` | 冻结的协议样本与成本实测数据 |
 
 ---
@@ -239,3 +241,11 @@ adb shell ip addr show | grep tun1
 - **主测环境是 Windows + 安卓**。代码本身跨平台（纯 Node），但没在 macOS / Linux 上验证过
 - **成本刹车默认关闭**（`maxCostPerTurn: null`）。要开就填数字，单位是美元/轮
 - **工具权限默认全开含 Bash**。有危险命令高亮、审计日志、紧急停止、空闲自杀兜底，但仍是全开
+
+---
+
+## 许可证
+
+[Apache-2.0](./LICENSE)。比 MIT 多了明确的专利授权保护，适合可能被公司采用的场景。
+
+`package.json` 里的 `"private": true` 是**故意保留**的：这个工具连上就拥有本机的 Bash 权限，绝不该被误发到 npm。
