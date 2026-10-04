@@ -15,9 +15,18 @@
   "_claudeBin": "claude 可执行文件路径。留 null 则从 PATH 里找。",
   "claudeBin": null,
 
-  "_model": "留 null = 不传 --model，让 CLI 用它自己的默认模型。",
-  "_modelWarn": "显式传 --model 会让某些中转网关挂死（实测），除非你确认自己的链路没问题，否则保持 null。",
+  "_model": "留 null = 不传 --model，让 CLI 用它自己的默认模型。这是最稳的一档，推荐先这样跑起来。",
+  "_modelSwitch": "填了 models 之后，手机上点顶栏模型名就能切换，不用改文件。",
+  "_modelSwitchHow": "原理：--model 是进程启动参数，活着的进程改不了，所以切换 = 杀进程重开。重开时带上 --resume <session-id> 把 CLI 会话接回来，对话不会丢（已实测跨模型 resume 有效）。",
+  "_modelSwitchCost": "切回 null 随时可以。换完第一轮的成本显示是准的：实测 resume 之后 total_cost_usd 从 0 重新计数，桥接的成本差分按新进程算，不会显示 $0.0000。",
+  "_modelSwitchWarn": "中转不提供「有哪些模型可查」的接口，models 只能自己填。填了它不认的名字不会静默失败——4-10 秒内会明确报 400 model platform is not recognized。",
   "model": null,
+  "_models": "下面每一项可以是字符串，也可以是 {name, label}。name 传 null 表示「不传 --model」。label 只是手机上显示的字。",
+  "models": [
+    { "name": null, "label": "CLI 默认" },
+    { "name": "opus", "label": "Opus" },
+    { "name": "sonnet", "label": "Sonnet" }
+  ],
 
   "_allowedTools": "逗号分隔。给远程端开放的能力 = 这里列的全部。",
   "_allowedToolsWarn": "包含 Bash 就等于把 shell 交给远程的人。去掉 Bash 会安全很多，但也失去大部分实用性。",

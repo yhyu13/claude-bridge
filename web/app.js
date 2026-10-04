@@ -25,7 +25,7 @@ const els = {
   statusdot: $('statusdot'), statustext: $('statustext'),
   input: $('input'), send: $('send'), abort: $('abort'), kill: $('kill'),
   modelbtn: $('modelbtn'), backend: $('backend'),
-  sheet: $('sheet'), backends: $('backends'), sheetclose: $('sheetclose'),
+  sheet: $('sheet'), backends: $('backends'), models: $('models'), sheetclose: $('sheetclose'),
 };
 
 let busy = false;
@@ -640,6 +640,12 @@ function connect() {
     // Normalise here rather than making showBackend guess which shape it got.
     .then((d) => { if (d) showBackend({ backend: d.active, available: d.available }); })
     .catch(() => { /* offline; the poll loop will retry */ });
+  // Same reason, and it is the only way the model picker learns what is on
+  // offer before the first turn of the session.
+  fetch(`/api/model?t=${encodeURIComponent(T)}`, { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d) showModel(d); })
+    .catch(() => { /* offline; the poll loop will retry */ });
   const loop = () => {
     pumpOnce().finally(() => setTimeout(loop, backoff));
   };
@@ -711,6 +717,10 @@ function handle(m) {
 
     case 'backend':
       showBackend(m);
+      break;
+
+    case 'model':
+      showModel(m);
       break;
 
     case 'turn_end': {
@@ -842,16 +852,97 @@ function showTurnError(el, e) {
 
 
 
-// ---- backend switcher ------------------------------------------------------
+// ---- model + backend switcher ----------------------------------------------
 //
-// The model behind this bridge is not fixed: the CLI talks to whatever relay
-// ~/.claude/settings.json points at, and that relay can start serving a
-// different model — or stop serving the configured one entirely. Measured 2026-10-04,
-// a rejected model fails in ~6s with "API Error: 400 model platform is not
-// recognized", so the fix has to be reachable from the phone, not from a text
-// editor on the other end of the wire.
+// Two different things, with different consequences, so the panel shows them
+// separately rather than as one list:
+//
+//   model   — --model is a spawn argument, so switching restarts the child —
+//             but it also passes --resume <session-id>, so the conversation
+//             comes back. Verified end to end: a passphrase seeded under one
+//             model was recalled after switching to another.
+//   backend — switching changes WHO bills, and the CLI session is not carried
+//             across that. The conversation is gone, and the panel says so.
+//
+// The model line shows the name the CLI actually booted with, which is not
+// always the name that was asked for: relays rename models. "What did I request"
+// and "what am I being billed for" are different questions.
 
 let backends = [];
+let models = [];
+let modelState = { requested: null, active: null, available: [] };
+
+function showModel(m) {
+  if (!m) return;
+  if (m.model) modelState = { ...modelState, ...m.model };
+  else modelState = m;
+  if (Array.isArray(m.model && m.model.available)) models = m.model.available;
+  else if (Array.isArray(m.available)) models = m.available;
+
+  const asked = modelState.requested;
+  const real = modelState.active;
+  els.model.textContent = real || asked || '默认';
+  // If the relay served something other than what was asked for, that mismatch
+  // is the single most useful thing to surface — it is why a switch can "work"
+  // while billing a different model than expected.
+  els.model.title = real && asked && real !== asked
+    ? `请求 ${asked}，中转实际给了 ${real}`
+    : (real || asked || '交给 CLI 默认模型');
+  if (!els.sheet.hidden) renderModels();
+}
+
+function renderModels() {
+  els.models.textContent = '';
+  if (!models.length) {
+    const p = document.createElement('div');
+    p.className = 'backendempty';
+    p.textContent = 'config.json 里没有配置 models。在电脑上加上 models 就能在这里切换。';
+    els.models.appendChild(p);
+    return;
+  }
+  for (const m of models) {
+    const name = m.name === undefined ? m : m.name;
+    const active = String(modelState.requested == null ? 'null' : modelState.requested) === String(name == null ? 'null' : name);
+    const row = document.createElement('button');
+    row.className = 'backendrow' + (active ? ' on' : '');
+    row.type = 'button';
+    row.disabled = active;
+
+    const n = document.createElement('span');
+    n.className = 'bn';
+    n.textContent = m.label || m.name || 'CLI 默认';
+    row.appendChild(n);
+
+    if (active && modelState.active && modelState.requested
+        && modelState.active !== modelState.requested) {
+      const h = document.createElement('span');
+      h.className = 'bh';
+      h.textContent = '实际 ' + modelState.active;
+      row.appendChild(h);
+    }
+    if (active) {
+      const c = document.createElement('span');
+      c.className = 'bcur';
+      c.textContent = '当前';
+      row.appendChild(c);
+    }
+    row.addEventListener('click', async () => {
+      row.disabled = true;
+      row.textContent = '切换中…';
+      const r = await post('/api/model', { name });
+      closeSheet();
+      if (r && r.error) {
+        alertBox('danger', `切换模型失败：${r.error}`, null, true);
+        renderModels();
+        return;
+      }
+      if (r && r.unchanged) return;
+      alertBox('warn', `已切到「${m.label || m.name || 'CLI 默认'}」`,
+        r && r.resumed ? 'claude 进程已重启，对话已接回原会话。' : 'claude 进程已重启。下一条消息会走新模型。');
+    });
+    els.models.appendChild(row);
+  }
+}
 
 function showBackend(m) {
   const b = m.backend;
@@ -915,6 +1006,7 @@ function renderBackends() {
 }
 
 function openSheet() {
+  renderModels();
   renderBackends();
   els.sheet.hidden = false;
 }

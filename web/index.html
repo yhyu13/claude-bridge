@@ -7,7 +7,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>claude-bridge</title>
-<link rel="stylesheet" href="style.css?v=12">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 
@@ -34,6 +34,10 @@
      is a lost conversation — that warning is part of the panel, not a footnote. -->
 <div id="sheet" class="sheet" hidden>
   <div class="sheetbox">
+    <div class="sheettitle">切换模型</div>
+    <div id="models" class="backends"></div>
+    <div class="sheetnote">切换会重启电脑上的 claude 进程，但会带上原会话 ID 接回来，<b>对话不会丢</b>。</div>
+
     <div class="sheettitle">切换 claude 后端</div>
     <div id="backends" class="backends"></div>
     <div class="sheetwarn">切换会重启电脑上的 claude 进程，<b>当前对话上下文会清空</b>。</div>
@@ -55,6 +59,6 @@
 </footer>
 
 <!-- v: bump whenever app.js / style.css change, or the phone keeps a stale copy -->
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

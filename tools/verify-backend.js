@@ -83,19 +83,12 @@ is(sw.activeBackend, 'relay', 'setBackend: a rejected switch leaves the active b
 
 // ---- 3. spawn arguments ------------------------------------------------------
 //
-// The child is `node` with no script, so it exits immediately — but the argv
-// file the fake writes is not produced here. Instead assert on the argument
-// builder directly by reproducing what start() assembles, which is the part
-// that regresses: dropping --settings silently sends every request to the old
-// relay while the UI claims the switch worked.
-const buildArgs = (session) => {
-  const args = ['-p', '--output-format', 'stream-json', '--input-format', 'stream-json',
-    '--verbose', '--allowedTools', session.allowedTools];
-  if (session.model) args.push('--model', session.model);
-  const b = session.backends && session.backends[session.activeBackend];
-  if (b && b.env && Object.keys(b.env).length) args.push('--settings', JSON.stringify({ env: b.env }));
-  return args;
-};
+// Assert against ClaudeSession.spawnArgs() — the SAME method start() uses. The
+// earlier version of this suite re-implemented the argument list inline, which is
+// a second copy of a protocol with nothing forcing the two to agree; it went
+// stale the moment `--resume` was added, and would have kept passing while
+// testing a command line the bridge no longer sends.
+const buildArgs = (session) => session.spawnArgs();
 
 const relayArgs = buildArgs(s);
 ok(relayArgs.includes('--settings'), 'spawn args: a backend with env gets --settings');
@@ -108,6 +101,71 @@ ok(!officialArgs.includes('--settings'), 'spawn args: an empty-env backend adds 
 
 const noBackendArgs = buildArgs(bare);
 ok(!noBackendArgs.includes('--settings'), 'spawn args: no backends configured at all means no --settings');
+
+// ---- 3b. model switching ------------------------------------------------------
+//
+// Verified end to end against a real relay before this code was written: a
+// passphrase seeded under one model was still recalled after killing the process
+// and respawning on another with --resume. So the contract these tests pin down
+// is "restart the child but keep the conversation" — which is exactly what makes
+// a model switch safe to offer from a phone. Drop --resume and the chat still
+// LOOKS continuous while the model has amnesia.
+const MODELS = [
+  { name: null, label: 'CLI 默认' },
+  { name: 'opus', label: 'Opus' },
+  { name: 'sonnet', label: 'Sonnet' },
+];
+const ms = makeSession({ models: MODELS, model: null, turnTimeoutSec: 999 });
+
+is(ms.modelInfo().requested, null, 'modelInfo: starts on the CLI default');
+is(ms.modelInfo().active, null, 'modelInfo: no model has booted yet');
+is(ms.modelInfo().available.length, 3, 'modelInfo: exposes the configured list');
+is(ms.modelInfo().available[0].name, null, 'modelInfo: the default entry keeps a null name, not "null"');
+
+const bad = ms.setModel('gpt-9');
+is(bad.ok, false, 'setModel: rejects a name that is not configured');
+ok(!!bad.error, 'setModel: says which list it checked');
+is(ms.modelInfo().requested, null, 'setModel: a rejected switch leaves the model untouched');
+ok(!buildArgs(ms).includes('--model'), 'setModel: a rejected switch must not leak a --model into the next spawn');
+
+const same = ms.setModel(null);
+is(same.ok, true, 'setModel: selecting the current model is accepted');
+is(same.unchanged, true, 'setModel: selecting the current model is reported as unchanged');
+
+const modelSw = ms.setModel('sonnet');
+is(modelSw.ok, true, 'setModel: switches to a configured model');
+is(modelSw.resumed, false, 'setModel: nothing to resume before the first turn has run');
+is(ms.modelInfo().requested, 'sonnet', 'setModel: the requested model is updated');
+ok(ms.modelInfo().active === null, 'setModel: the stale "active" report is dropped, not left pointing at the old model');
+is(buildArgs(ms)[buildArgs(ms).indexOf('--model') + 1], 'sonnet', 'spawn args: --model carries the new name');
+
+// The conversation-carrying part.
+//
+// Note what is NOT asserted here: `setModel()` cannot be observed through
+// spawnArgs(), because setModel() really does call start(), and start() consumes
+// the pending resume while assembling its own argv. So the flag is exercised on
+// the unit that actually builds the command line, with the preconditions the
+// constructor documents.
+const carrier = makeSession({ models: MODELS, model: 'opus', turnTimeoutSec: 999 });
+carrier.sessionId = 'sess-1234';
+carrier.pendingResume = true;
+const resumed = carrier.spawnArgs();
+is(resumed[resumed.indexOf('--resume') + 1], 'sess-1234', 'spawn args: --resume carries the session id');
+ok(!carrier.spawnArgs().includes('--resume'), 'spawn args: --resume is consumed once, not repeated on every spawn');
+
+const noSessionYet = makeSession({ models: MODELS, model: 'opus', turnTimeoutSec: 999 });
+noSessionYet.pendingResume = true;                      // set, but no session id exists
+ok(!noSessionYet.spawnArgs().includes('--resume'), 'spawn args: no session id means no --resume, even if resume was requested');
+
+const fresh = makeSession({ models: MODELS, model: 'opus', turnTimeoutSec: 999 });
+ok(!fresh.spawnArgs().includes('--resume'), 'spawn args: a fresh start never resumes — the phone has no history of that session');
+
+const backToDefault = makeSession({ models: MODELS, model: 'sonnet', turnTimeoutSec: 999 });
+is(backToDefault.setModel(null).ok, true, 'setModel: going back to the CLI default is allowed');
+ok(!backToDefault.spawnArgs().includes('--model'), 'spawn args: the default entry passes no --model at all');
+
+const noList = makeSession({ models: null, turnTimeoutSec: 999 });
+is(noList.setModel('opus').ok, false, 'setModel: with no models configured, nothing can be selected');
 
 // ---- 4. parseApiError --------------------------------------------------------
 // (lives in bridge.js; exercised through the same regex the bridge uses)
@@ -231,6 +289,44 @@ function watchSession(timeoutSec, backendName) {
   s5.stop('test-done');
   await new Promise((r) => setTimeout(r, 800));
   is(seen5.length, 0, 'abort: stopping an idle session emits no turn_end');
+
+  // ---- 7. a switch must not orphan the process it just started ---------------
+  //
+  // This is what actually broke model switching end to end. setModel() kills the
+  // child and spawns a replacement in the same tick; the dying process's `close`
+  // arrives a moment later. The handler used to null this.proc unconditionally,
+  // which orphaned the live replacement, fired a bogus session_end, and dropped
+  // the queue. The next send() then saw isAlive()===false and started ANOTHER
+  // process — one that had already consumed pendingResume, so it carried no
+  // --resume. Measured symptom: right after a switch the model answered
+  // "I don't see any password in our conversation history".
+  //
+  // No prompt is sent, so this costs nothing: it only needs a live process.
+  const sw6 = new ClaudeSession({
+    claudeBin: REAL_BIN,
+    workdir: TMP,
+    allowedTools: 'Bash',
+    backends: null,
+    models: [{ name: null, label: '默认' }, { name: 'sonnet', label: 'Sonnet' }],
+    model: null,
+    turnTimeoutSec: 999,
+  });
+  const sessionEnds = [];
+  sw6.on('session_end', (e) => sessionEnds.push(e));
+  sw6.on('fatal', () => {});
+  sw6.start();
+  await new Promise((r) => setTimeout(r, 1500));
+  ok(sw6.isAlive(), 'switch: the first process came up');
+
+  sw6.setModel('sonnet');
+  // Long enough for the OLD process's close event to have been delivered.
+  await new Promise((r) => setTimeout(r, 2500));
+
+  ok(sw6.isAlive(), 'switch: the replacement process is still alive after the old one exits');
+  ok(!!sw6.proc, 'switch: this.proc still points at the replacement, not null');
+  is(sessionEnds.length, 0, 'switch: no bogus session_end for a session that is still running');
+  sw6.stop('test-done');
+  await new Promise((r) => setTimeout(r, 600));
 
   const total = pass + failures.length;
   if (failures.length) {

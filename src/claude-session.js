@@ -69,6 +69,25 @@ class ClaudeSession extends EventEmitter {
     // settings overlay the CLI merges on top of the user's own config.
     this.backends = opts.backends || null;
     this.activeBackend = opts.activeBackend || null;
+
+    // Model switching. `--model` is a SPAWN argument: a live process keeps the
+    // model it booted with, so switching means kill + respawn. What makes that
+    // usable rather than destructive is `--resume <session-id>`: the new process
+    // picks the same CLI session back up, so the conversation survives the
+    // switch. Measured 2026-10-04 against a relay — `opus` seeded a passphrase,
+    // the process was killed, `sonnet --resume <sid>` answered the passphrase
+    // correctly. This also retires an old note in AGENTS.md that said passing
+    // `--model` makes a relay hang: a bad model name fails in 4-10s with
+    // "model platform is not recognized", which is loud, not silent.
+    this.models = opts.models || null;
+    this.sessionId = null;
+    // What the CLI reported it booted with, which need not match `this.model`:
+    // relays rename models. Tracked separately so the phone can show both.
+    this.activeModel = null;
+    // Set when the next spawn should resume. Consumed once: a fresh bridge
+    // start must NOT resurrect a session the phone has no record of.
+    this.pendingResume = false;
+
     // A backend that is merely unreachable produces NO events at all — measured:
     // 60s of `system` chatter and not one error. Without a watchdog the phone
     // spins forever with nothing to report. 0 disables the watchdog.
@@ -90,7 +109,6 @@ class ClaudeSession extends EventEmitter {
     this.starting = false;
     this.stderrTail = [];
   }
-
   /** Public description of the backend in force, for the status/ready payload. */
   backendInfo() {
     if (!this.backends || !this.activeBackend) return null;
@@ -122,7 +140,96 @@ class ClaudeSession extends EventEmitter {
     return { ok: true, backend: this.backendInfo() };
   }
 
+  /**
+   * What the phone shows about the model.
+   *
+   * `requested` is what we pass to --model, `active` is what the CLI reports
+   * back. They routinely disagree: a relay renames models (asked for `opus`,
+   * billed as `claude-opus-4-8[1M]`), and a relay can quietly stop serving a
+   * name that worked yesterday. Both are worth showing — "which model did I
+   * ask for" and "which one am I really paying for" are different questions, and
+   * answering only the first is how you end up debugging the wrong layer.
+   */
+  modelInfo() {
+    const list = this.models || [];
+    return {
+      requested: this.model || null,
+      active: this.activeModel || null,
+      sessionId: this.sessionId || null,
+      available: list.map((m) => (typeof m === 'string' ? { name: m, label: m } : { ...m })),
+    };
+  }
+
+  /**
+   * Swap the model. Same shape as setBackend: kill, respawn with the new
+   * --model, and carry the CLI session across with --resume so the conversation
+   * survives. A backend switch does NOT get this: it changes credentials, and
+   * resuming a conversation into a different provider's billing is a different
+   * promise than moving between models behind one provider.
+   */
+  setModel(name) {
+    const list = this.models || [];
+    const norm = (v) => (v === null || v === undefined || v === '' ? null : String(v));
+
+    if (!list.some((m) => norm(typeof m === 'string' ? m : m.name) === norm(name))) {
+      return { ok: false, error: `没有名为 "${name}" 的模型。config.json 的 models 里没这一项。` };
+    }
+    if (norm(this.model) === norm(name)) {
+      return { ok: true, unchanged: true, model: this.modelInfo() };
+    }
+
+    this.model = norm(name);
+    // A model that does not exist must not silently take the previous one with
+    // it, so drop the stale report before respawning.
+    this.activeModel = null;
+    if (this.sessionId) this.pendingResume = true;
+    this.stop('model-switch');
+    this.start();
+    return { ok: true, resumed: !!this.sessionId, model: this.modelInfo() };
+  }
+
   // ---- lifecycle -----------------------------------------------------------
+
+  /**
+   * The exact argv the child is launched with.
+   *
+   * Extracted from start() so tests assert on the real thing. An earlier version
+   * of the test suite re-implemented this list inline, which quietly went stale
+   * the moment `--resume` was added — a duplicated copy of a protocol is a second
+   * implementation to keep correct, and nothing forces the two to agree.
+   */
+  spawnArgs() {
+    const args = [
+      '-p',
+      '--output-format', 'stream-json',
+      '--input-format', 'stream-json',
+      '--verbose',
+      '--allowedTools', this.allowedTools,
+    ];
+    if (this.model) args.push('--model', this.model);
+
+    // Carry the conversation across a model switch. Without this, picking a
+    // different model on the phone would silently start a blank conversation
+    // that still LOOKS continuous on screen — the worst kind of bug, because
+    // nothing on the screen says the context was dropped.
+    //
+    // Only set by setModel(), and consumed here: a fresh bridge start has
+    // pendingResume=false, so it never resurrects a session the phone's history
+    // does not mention.
+    if (this.pendingResume && this.sessionId) {
+      args.push('--resume', this.sessionId);
+      this.pendingResume = false;
+      this.emit('log', { level: 'info', msg: `resuming session ${this.sessionId} under model ${this.model}` });
+    }
+
+    // Backend overlay. Verified to outrank ~/.claude/settings.json, which the
+    // process env does not — see the constructor note.
+    const backend = this.backends && this.backends[this.activeBackend];
+    if (backend && backend.env && Object.keys(backend.env).length) {
+      args.push('--settings', JSON.stringify({ env: backend.env }));
+    }
+    return args;
+  }
 
   isAlive() {
     return !!this.proc && this.proc.exitCode === null;
@@ -140,21 +247,7 @@ class ClaudeSession extends EventEmitter {
     }
 
     this.starting = true;
-    const args = [
-      '-p',
-      '--output-format', 'stream-json',
-      '--input-format', 'stream-json',
-      '--verbose',
-      '--allowedTools', this.allowedTools,
-    ];
-    if (this.model) args.push('--model', this.model);
-
-    // Backend overlay. Verified to outrank ~/.claude/settings.json, which the
-    // process env does not — see the constructor note.
-    const backend = this.backends && this.backends[this.activeBackend];
-    if (backend && backend.env && Object.keys(backend.env).length) {
-      args.push('--settings', JSON.stringify({ env: backend.env }));
-    }
+    const args = this.spawnArgs();
 
     let proc;
     try {
@@ -170,6 +263,15 @@ class ClaudeSession extends EventEmitter {
     }
     this.proc = proc;
     // New process => new session => cost accumulation starts over.
+    //
+    // This also has to stay 0 when the spawn is a --resume. Measured 2026-10-04:
+    // a process that resumed a session with a different model reported
+    // total_cost_usd 0.1066 for its first turn, while the pre-switch process had
+    // already reached 0.4619 — so the field counts the CURRENT PROCESS, not the
+    // conversation. Carrying the old baseline across a model switch would compute
+    // 0.1066 - 0.4619, clamp to 0, and render "$0.0000" for that turn: the exact
+    // fake-success number this project has now fixed twice. Do not "preserve" this
+    // baseline across a restart.
     this.lastCumulativeCost = 0;
 
     let buf = '';
@@ -208,6 +310,21 @@ class ClaudeSession extends EventEmitter {
     });
 
     proc.on('close', (code, signal) => {
+      // If this.proc is no longer us, a replacement was already spawned — that
+      // is what setModel()/setBackend() do: kill the child and start a new one
+      // in the same tick. The dying process's `close` arrives a moment later,
+      // and acting on it then would (a) orphan the live process by nulling
+      // `this.proc`, (b) emit a session_end for a session that is happily
+      // running, and (c) drop anything queued in between.
+      //
+      // The third one is what actually broke model switching: with this.proc
+      // nulled, the next send() saw isAlive()===false and started ANOTHER
+      // process — one that had already consumed pendingResume, so it carried no
+      // --resume and came up with no memory of the conversation. Measured: the
+      // model answered "I don't see any password in our conversation history"
+      // right after a switch that the CLI itself handles correctly.
+      if (this.proc && this.proc !== proc) return;
+
       this.starting = false;
       const wasInFlight = this.inFlight;
       this.proc = null;
@@ -384,6 +501,12 @@ class ClaudeSession extends EventEmitter {
     switch (obj.type) {
       case 'system':
         if (obj.subtype === 'init') {
+          // Remember both. `session_id` is what --resume needs to carry the
+          // conversation onto a different model; `model` is what the CLI
+          // actually booted with, which a relay is free to rename away from the
+          // name we asked for.
+          if (obj.session_id) this.sessionId = obj.session_id;
+          if (obj.model) this.activeModel = obj.model;
           this.emit('init', obj);
         } else if (obj.subtype === 'thinking_tokens') {
           this.emit('thinking_tokens', obj);

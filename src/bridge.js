@@ -106,6 +106,9 @@ session.on('init', (obj) => {
   // These can disagree with config.json (a relay may remap the model name), and
   // when a switch breaks, "which model am I really on" is question one.
   broadcast({ t: 'backend', backend: session.backendInfo(), available: backendList() });
+  // Also refresh the model view: after a --resume the CLI reports the model it
+  // actually came up on, which is the answer to "what am I really paying for".
+  broadcast({ t: 'model', model: session.modelInfo() });
   log('info', 'session init', {
     cwd: obj.cwd, model: obj.model, tools: (obj.tools || []).length,
     backend: session.backendInfo(),
@@ -329,6 +332,7 @@ const server = http.createServer(async (req, res) => {
       totalCost: Number(totalCost.toFixed(4)),
       ready: ready ? { cwd: ready.cwd, model: ready.model, toolCount: ready.toolCount } : null,
       backend: session.backendInfo(),
+      model: session.modelInfo(),
     });
   }
 
@@ -344,6 +348,15 @@ const server = http.createServer(async (req, res) => {
       available: backendList(),
       turnTimeoutSec: CONFIG.turnTimeoutSec ?? 0,
     });
+  }
+
+  // Model switcher. Unlike a backend switch this one RESUMES the conversation:
+  // --resume <session-id> carries the CLI session onto the new model, verified
+  // end to end (a passphrase seeded under `opus` was recalled after switching to
+  // `sonnet`). The backend switch above does not, because it changes who bills.
+  if (req.method === 'GET' && url.pathname === '/api/model') {
+    if (!checkToken(req, url)) return json(res, 401, { error: 'bad token' });
+    return json(res, 200, session.modelInfo());
   }
 
   // ---- poll stream (primary transport) ----
@@ -429,6 +442,25 @@ const server = http.createServer(async (req, res) => {
       // Tell every connected phone immediately rather than making them wait for
       // the next poll to notice the model line changed.
       broadcast({ t: 'backend', backend: r.backend, available: backendList() });
+      return json(res, 200, r);
+    }
+    if (url.pathname === '/api/model') {
+      // An empty / null / "null" name means "go back to the CLI default", which
+      // is a real option and often the safest one: a relay can stop serving the
+      // name you hard-coded, and the default keeps working.
+      const raw = body.name === undefined ? '' : String(body.name).trim();
+      const name = (raw === '' || raw === 'null') ? null : raw;
+      const r = session.setModel(name);
+      audit.write('model-switch', { name, ok: r.ok, resumed: !!r.resumed, error: r.error || null });
+      if (!r.ok) return json(res, 400, r);
+      log('info', 'model switched', {
+        requested: r.model && r.model.requested,
+        active: r.model && r.model.active,
+        resumed: !!r.resumed,
+      });
+      // The phone's model chip and its picker both read this, and a switch is
+      // not something a client should have to poll to notice.
+      broadcast({ t: 'model', model: r.model });
       return json(res, 200, r);
     }
   }
