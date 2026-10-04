@@ -234,6 +234,14 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://$IP:8787/api/status"   # 期望
 
     修法：`close` 里先判断 `if (this.proc && this.proc !== proc) return;`。回归测试刻意**不发任何消息**（所以不花钱），只验切换后 `isAlive()` 仍为 true、`this.proc` 非空、没多出 `session_end`。写完还把修复撤掉跑了一遍，确认测试真的会红——**抓不到 bug 的测试等于没写。**
 
+20. **一块 UI 状态只能有一个写入者。** 加模型切换时，`showModel()` 开始写 `#model`；而 `showReady()` 早就在写它，而且 `pumpOnce()` **每次轮询都调 `showReady(d.status.ready)`**。于是每秒一次：服务端 `ready` 快照里的旧模型名（`claude-opus-5-5` → `claude-sonnet-5[1M]`）把刚更新的值盖回去。
+
+    表现是：切换接口返回成功、提示条也说切成功了、连 `title` 属性都更新成了新值——**只有文字停在旧的**。因为 `showModel` 先设 title 再设 text，而 `showReady` 只设 text，不碰 title。于是 DOM 变成 `title="opus"` 配旧文字，这种"一半对一半错"的状态比全错更难查。
+
+    判据：**给某个 DOM 节点或某个 state 变量加第二个写入点之前，先确认第一个不会继续跑。** 定时器驱动的重复渲染（轮询、定时刷新、动画帧）里，"谁最后跑谁赢"，而且每次都朝同一个方向赢。修法是删掉旧写入者，让职责归一。
+
+    抓它的过程也说明了为什么**要看实际 DOM 属性而不只是文本**：`title` 是新值、文字是旧值，这两个来自不同写入者，矛盾本身就是定位线索。
+
 ---
 
 ## 7. 代码地图

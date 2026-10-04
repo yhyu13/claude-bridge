@@ -585,7 +585,13 @@ function setLink(cls, text) {
 function showReady(m) {
   els.cwd.textContent = m.cwd || '(未知目录)';
   els.cwd.title = m.cwd || '';
-  els.model.textContent = m.model || '';
+  // NOT `els.model.textContent = m.model` any more. `ready.model` is the model
+  // the LAST init reported, so after a model switch it keeps naming the model we
+  // just left — and pumpOnce() re-runs this on every single poll, so it would
+  // stomp the fresh value from showModel() once per second. Two writers for one
+  // piece of UI state, both firing on a timer, is a race that resolves the same
+  // wrong way every time. The model line now belongs to showModel() alone; the
+  // /api/model fetch on connect covers a page that has not seen a model event.
   if (!busy) setStatus(false, `${m.toolCount} 个工具 · ${(m.skills || []).length} 技能 · ${(m.mcpServers || []).length} MCP`);
 }
 
