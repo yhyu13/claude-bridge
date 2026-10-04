@@ -108,6 +108,42 @@ if (statusBlock) {
   ok(/totalCost/.test(s), 'auth: /api/status carries the cost detail that health dropped');
 }
 
+// ---- 6. the phone re-reads model/backend instead of trusting pushed events ---
+//
+// A bridge restart drops every event an already-open page had not polled for
+// yet, and nothing pushes a replacement: model and backend are only broadcast on
+// a SWITCH. The chip then froze on whatever it knew at connect time and kept
+// displaying it — a confident, wrong answer, indefinitely, because `polling`
+// stays true so connect()'s one-shot fetch never runs again.
+//
+// These are structural tripwires, not a behavioural test. They fail if the
+// re-sync is deleted; they stay green if it is called in a way that never
+// resolves. The behaviour was verified live instead — restart the bridge under
+// an open page and watch the chip change with no reload — and is not re-proven
+// here. stripComments matters: these patterns must not be satisfiable by the
+// prose of this very comment.
+const appSrc = fs.readFileSync(path.join(__dirname, '..', 'web', 'app.js'), 'utf8');
+const appCode = stripComments(appSrc);
+
+ok(/function resync\s*\(/.test(appCode), 'client: resync() exists');
+ok(/\/api\/model\?t=/.test(appCode) && /showModel\(d\)/.test(appCode),
+  'client: resync() re-reads the model list and hands it to showModel');
+ok(/\/api\/backend\?t=/.test(appCode) && /showBackend\(\{ backend: d\.active/.test(appCode),
+  'client: resync() re-reads the backend and hands it to showBackend');
+ok(/if \(sawOffline\) \{ sawOffline = false; resync\(\); \}/.test(appCode),
+  'client: the first poll that recovers after a failure triggers resync()');
+ok(/^\s*sawOffline = true;/m.test(appCode),
+  'client: a failed poll is what marks the page offline in the first place');
+
+// The same family, opposite failure: two writers for one value, both on a timer.
+// The model line belongs to showModel alone.
+const showReadyFn = appSrc.match(/function showReady\([\s\S]*?\n\}/);
+ok(!!showReadyFn, 'client: showReady() exists');
+if (showReadyFn) {
+  ok(!/els\.model\./.test(stripComments(showReadyFn[0])),
+    'client: showReady() does not write the model line (showModel is its only writer)');
+}
+
 // ---- report ----------------------------------------------------------------
 const total = pass + failures.length;
 if (failures.length) {

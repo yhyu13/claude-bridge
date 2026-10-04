@@ -604,6 +604,11 @@ function pumpOnce() {
     .then((d) => {
       setLink('on', '已连接');
       backoff = 800;
+      // A bridge restart loses every event we had not polled for yet, and the new
+      // one starts its seq at 0 with a different model and backend. The poll
+      // coming back green is the only signal we get that the world changed under
+      // us, so this is where the chip stops lying about which model is running.
+      if (sawOffline) { sawOffline = false; resync(); }
 
       if (d.status && d.status.ready) showReady(d.status.ready);
       if (d.status) {
@@ -618,6 +623,7 @@ function pumpOnce() {
       runAutotest();
     })
     .catch(() => {
+      sawOffline = true;
       setLink('err', '连接不上');
       els.dot.className = 'dot wait';
       setStatus(false, '检查电脑端桥接是否在运行');
@@ -634,24 +640,39 @@ function runAutotest() {
   }, 200);
 }
 
+// Model and backend are pushed as events, but events only fire on a SWITCH. A page
+// that was already open when the bridge restarted gets no event, so its chip keeps
+// naming the model and the gateway from before the restart — confidently, and
+// indefinitely, because `polling` is still true so connect()'s one-shot fetch never
+// runs again. Re-pull both whenever we might have missed an event: on the first
+// connect, on the first poll after a failure, and whenever a claude process reports
+// in (a new process may have booted with a different model than the one we knew).
+//
+// This is the same lesson as the single-writer rule above, from the other side:
+// there, two writers fought over one value. Here there were zero writers after a
+// restart, and a stale value is just as wrong as a thrashing one.
+let sawOffline = false;
+
+function resync() {
+  // The GET endpoint answers with `active`; the pushed event uses `backend`.
+  // Normalise here rather than making showBackend guess which shape it got.
+  fetch(`/api/backend?t=${encodeURIComponent(T)}`, { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d) showBackend({ backend: d.active, available: d.available }); })
+    .catch(() => { /* offline; the poll loop will retry */ });
+  fetch(`/api/model?t=${encodeURIComponent(T)}`, { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d) showModel(d); })
+    .catch(() => { /* offline; the poll loop will retry */ });
+}
+
 function connect() {
   if (polling) return;
   polling = true;
   // Ask who we are talking to straight away. The `backend` event only fires on
   // system/init, which does not happen until the first prompt of a session — so a
   // freshly opened page would otherwise show no backend at all.
-  fetch(`/api/backend?t=${encodeURIComponent(T)}`, { cache: 'no-store' })
-    .then((r) => (r.ok ? r.json() : null))
-    // The GET endpoint answers with `active`; the pushed event uses `backend`.
-    // Normalise here rather than making showBackend guess which shape it got.
-    .then((d) => { if (d) showBackend({ backend: d.active, available: d.available }); })
-    .catch(() => { /* offline; the poll loop will retry */ });
-  // Same reason, and it is the only way the model picker learns what is on
-  // offer before the first turn of the session.
-  fetch(`/api/model?t=${encodeURIComponent(T)}`, { cache: 'no-store' })
-    .then((r) => (r.ok ? r.json() : null))
-    .then((d) => { if (d) showModel(d); })
-    .catch(() => { /* offline; the poll loop will retry */ });
+  resync();
   const loop = () => {
     pumpOnce().finally(() => setTimeout(loop, backoff));
   };
@@ -662,6 +683,11 @@ function handle(m) {
   switch (m.t) {
     case 'ready':
       showReady(m);
+      // A claude process just booted. It may have booted with a different model
+      // than the one this page knows about — the user can also switch from the
+      // desktop CLI, which never reaches us as an event. Re-read instead of
+      // trusting `m.model`, which is the init snapshot of that process.
+      resync();
       break;
 
     // Replay of a prompt this bridge already accepted. Lets a refreshed page show
