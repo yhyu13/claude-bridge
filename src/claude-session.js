@@ -24,6 +24,35 @@ const { EventEmitter } = require('events');
 const fs = require('fs');
 const path = require('path');
 
+// 为什么中止一轮时是"手动收尾"而不是等 CLI 自己报 result
+// -------------------------------------------------------
+// 桥接把 claude 当常驻子进程，一轮从写 stdin 开始、到 CLI 回一个 result 结束。
+// 但我们主动拆进程时（用户按停止、成本刹车、切后端、关机），这一轮永远等不到
+// 那个 result —— 于是永远不会有 turn_end。没有 turn_end 的后果不只是页脚少一行：
+//   · 手机上那一轮的卡片永远不收尾，看不到花了多少钱、也不知道是"已中止"
+//   · 任何以 turn_end 作为轮次边界的客户端会一直挂着等下去
+// 所以在 stop() 里显式补一个 aborted 的 turn_end。这不是可选的收尾，是协议要求。
+//
+// 另一个容易踩的坑：close 处理器里那段"进程死了就把在飞的那轮收掉"的逻辑，
+// 对 stop() 这条路径是**无效**的 —— stop() 会先把 inFlight 置空，close 触发时
+// 再读已经读不到东西了。这两处必须成对看，只改一处等于没改。
+
+/** 中止原因会直接渲染到手机那一轮的页脚上（web/app.js 读 m.error），所以给中文。 */
+const STOP_REASON_TEXT = {
+  aborted: '已手动中止',
+  'user-kill': '已终止会话',
+  'backend-switch': '切换后端时中断',
+  'max-cost-per-turn': '超出单轮成本上限',
+  'idle-timeout': '空闲超时回收',
+  'process-exit': 'claude 进程意外退出',
+  'not-running': 'claude 未在运行',
+};
+
+function stopReasonText(reason) {
+  if (STOP_REASON_TEXT[reason]) return STOP_REASON_TEXT[reason];
+  return typeof reason === 'string' && reason ? reason : '已中断';
+}
+
 class ClaudeSession extends EventEmitter {
   constructor(opts) {
     super();
@@ -187,7 +216,7 @@ class ClaudeSession extends EventEmitter {
       // A turn that was running when the process died never produced a `result`.
       // Close it explicitly so the UI cannot hang waiting for one.
       if (wasInFlight) {
-        this.emit('turn_end', { index: wasInFlight.index, aborted: true, error: 'process-exit' });
+        this.emit('turn_end', { index: wasInFlight.index, aborted: true, error: stopReasonText('process-exit') });
       }
       this.emit('session_end', {
         code,
@@ -261,6 +290,7 @@ class ClaudeSession extends EventEmitter {
   }
 
   stop(reason = 'requested') {
+    const wasInFlight = this.inFlight;
     if (this.proc) {
       try { this.proc.kill(); } catch { /* already gone */ }
     }
@@ -269,6 +299,14 @@ class ClaudeSession extends EventEmitter {
     this.queue = [];
     this._clearTurnTimeout();
     this._clearIdle();
+    // 我们把进程拆了，这一轮就永远等不到 CLI 侧的 `result`，也就永远不会有
+    // turn_end。close 处理器补不上这个洞——它读的是 this.inFlight，而我们上面
+    // 已经置空了。不在这里收尾的话，手机上那一轮的页脚永远不出现（用户只看到
+    // 提示说停了，却看不到"已中止"和花了多少钱），而按 turn_end 判轮次边界的
+    // 客户端（比如 verify-2turn）会一直等下去。
+    if (wasInFlight) {
+      this.emit('turn_end', { index: wasInFlight.index, aborted: true, error: stopReasonText(reason) });
+    }
     this.emit('log', { level: 'info', msg: `session stopped: ${reason}` });
   }
 
@@ -314,7 +352,7 @@ class ClaudeSession extends EventEmitter {
     if (!this.isAlive()) {
       // The process died before we got here; the turn is lost, do not silently stall.
       const lost = this.queue.shift();
-      this.emit('turn_end', { index: lost.index, aborted: true, error: 'not-running' });
+      this.emit('turn_end', { index: lost.index, aborted: true, error: stopReasonText('not-running') });
       return;
     }
 

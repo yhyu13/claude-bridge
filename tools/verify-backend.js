@@ -185,6 +185,53 @@ function watchSession(timeoutSec, backendName) {
   is(seen3.length, 1, 'watchdog: nothing that arrives later emits a second turn_end');
   s3.stop('test-done');
 
+  // ---- 6. abort must close the turn it killed -------------------------------
+  //
+  // Real bug, found by probing the live bridge over /api/poll: pressing STOP
+  // returned aborted:true and the phone got the warn alert, but NO turn_end ever
+  // arrived — only session_end. The UI has always been able to render an aborted
+  // footer (web/app.js reads m.aborted / m.error), so that code was unreachable.
+  //
+  // Root cause: stop() nulls this.inFlight on its way out, but the `close`
+  // handler that is supposed to rescue an orphaned turn READS this.inFlight.
+  // By the time `close` fires the field is already gone, so the guard never
+  // passes. Neither half is wrong alone — they only work as a pair.
+  //
+  // Why it matters beyond cosmetics: turn_end is the only reliable turn boundary
+  // in this protocol. A client that waits for it (verify-2turn does) hangs
+  // forever, and the user never learns what the aborted turn cost.
+  const { s: s4, seen: seen4 } = watchSession(999, 'broken'); // watchdog effectively off
+  s4.start();
+  s4.send('这一轮不会有任何回答');
+
+  // Do not abort blindly: if the turn is not in flight yet, abort() clears the
+  // queue instead and returns aborted:false, and the test would "pass" for the
+  // wrong reason. Wait for the turn to actually be in flight first.
+  const t2 = Date.now();
+  while (Date.now() - t2 < 25000 && !s4.inFlight) {
+    await new Promise((r) => setTimeout(r, 200));
+  }
+  ok(!!s4.inFlight, 'abort: the turn really is in flight before we abort it');
+
+  const ab = s4.abort();
+  ok(ab.aborted === true, 'abort: reports that it stopped something');
+  await new Promise((r) => setTimeout(r, 2500)); // let close fire and try to double-report
+
+  is(seen4.length, 1, `abort: exactly one turn_end (got ${seen4.length})`);
+  is(seen4[0] && seen4[0].aborted, true, 'abort: the turn_end is flagged aborted');
+  is(seen4[0] && seen4[0].timedOut, undefined, 'abort: not mislabelled as a watchdog timeout');
+  ok(seen4[0] && typeof seen4[0].error === 'string' && seen4[0].error.length > 0,
+    'abort: carries a reason, so the phone footer can say why it stopped');
+  ok(seen4[0] && !/[a-z]+-[a-z]+/.test(String(seen4[0].error)),
+    `abort: the reason is human-readable, not a raw token (got ${JSON.stringify(seen4[0] && seen4[0].error)})`);
+
+  // And the inverse: stopping with nothing in flight must NOT invent a turn_end,
+  // or the phone would grow phantom aborted turns on every backend switch.
+  const { s: s5, seen: seen5 } = watchSession(999, 'broken');
+  s5.stop('test-done');
+  await new Promise((r) => setTimeout(r, 800));
+  is(seen5.length, 0, 'abort: stopping an idle session emits no turn_end');
+
   const total = pass + failures.length;
   if (failures.length) {
     console.log(`verify-backend: ${pass}/${total} passed, ${failures.length} FAILED\n`);
