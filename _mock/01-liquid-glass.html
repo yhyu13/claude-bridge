@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>方案 A · 液态玻璃 Liquid Glass</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   方案 A · 液态玻璃
+   照抄对象：Apple iOS 26 Liquid Glass / visionOS 玻璃材质
+
+   三条承重规则（少一条就塌成「灰蒙蒙的半透明方块」）：
+     1. backdrop-filter: blur(20px) saturate(180%)
+        saturate 是大多数人忘写的那半个。高斯模糊会把颜色平均掉，
+        纯 blur 出来是脏塑料；把饱和度 push 回去才像玻璃。
+     2. 底色约 8% 白。纯透明 = 只有模糊、没有面，不读作一块板。
+     3. 1px 半透明白描边。玻璃的边界是它唯一确认自己存在的地方。
+
+   另外两条纪律：
+     · 长文本不上玻璃 —— 玻璃没有稳定对比度，消息正文必须实底
+     · 同时最多 3 个毛玻璃面 —— 叠 blur 会互相污染且掉帧
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root{
+  --glass-bg: rgba(255,255,255,.08);
+  --glass-stroke: rgba(255,255,255,.16);
+  --glass-hi: inset 0 1px 0 rgba(255,255,255,.24);
+  --shadow-float: 0 10px 40px rgba(8,4,40,.34);
+  --ink: #f2f0ff;
+  --ink-dim: rgba(242,240,255,.62);
+  --ink-faint: rgba(242,240,255,.38);
+  --blur: blur(20px) saturate(180%);
+  /* 透明梯度：越靠上层越透。这是空间感的来源，不是装饰。 */
+  --tint-top: rgba(255,255,255,.05);
+  --tint-mid: rgba(255,255,255,.09);
+  --tint-bot: rgba(255,255,255,.14);
+}
+
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font:400 15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  color:var(--ink);
+  display:flex; align-items:stretch;
+  background:
+    radial-gradient(120% 80% at 12% 0%,   #5b2bd6 0%, transparent 58%),
+    radial-gradient(100% 70% at 88% 14%,  #d1348f 0%, transparent 55%),
+    radial-gradient(120% 90% at 50% 108%, #0b7fd4 0%, transparent 62%),
+    #14102a;
+  background-attachment:fixed;
+}
+/* 玻璃需要背后有能量才折射得出来。加一层缓慢流动的网格，给它一点可折射的东西 */
+body::before{
+  content:''; position:fixed; inset:-20%;
+  background:
+    conic-gradient(from 0deg at 30% 30%, rgba(255,255,255,.10), transparent 30%),
+    conic-gradient(from 200deg at 70% 60%, rgba(120,255,235,.09), transparent 34%);
+  filter:blur(60px); animation:drift 34s linear infinite; pointer-events:none;
+}
+@keyframes drift{to{transform:rotate(360deg)}}
+
+.glass{
+  background:var(--glass-bg);
+  backdrop-filter:var(--blur); -webkit-backdrop-filter:var(--blur);
+  border:1px solid var(--glass-stroke);
+  box-shadow:var(--glass-hi), var(--shadow-float);
+}
+
+/* ── 手机 ───────────────────────────────────────────────── */
+.phone{
+  width:100%; max-width:400px; flex:0 0 auto; margin:auto;
+  height:100dvh; display:flex; flex-direction:column;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+  position:relative; z-index:1;
+}
+
+/* 玻璃面 ①：顶栏 */
+.topbar{
+  margin:10px 10px 0; padding:9px 12px;
+  border-radius:18px; display:flex; align-items:center; gap:9px;
+  flex:0 0 auto;
+}
+.dot{width:8px;height:8px;border-radius:50%;background:#3ee08a;flex:0 0 auto;
+  box-shadow:0 0 0 3px rgba(62,224,138,.20)}
+.modelbtn{
+  display:flex;align-items:center;gap:7px;min-width:0;flex:1;
+  background:transparent;border:0;color:inherit;cursor:pointer;
+  font:inherit;padding:0;text-align:left;
+}
+.model{font:600 13px/1.3 ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.backend{font-size:11px;color:var(--ink-faint);white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis;max-width:45%}
+.caret{font-size:9px;color:var(--ink-faint);flex:0 0 auto}
+.meta{font:600 11px/1 ui-monospace,Menlo,monospace;color:var(--ink-dim);flex:0 0 auto}
+.cwdbar{
+  margin:6px 10px 0; padding:5px 12px; border-radius:12px;
+  font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--ink-faint);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis; flex:0 0 auto;
+}
+
+/* ── 消息流 ─────────────────────────────────────────────── */
+.stream{
+  flex:1; overflow-y:auto; padding:14px 12px 6px;
+  display:flex; flex-direction:column; gap:11px;
+  -webkit-overflow-scrolling:touch;
+}
+.stream::-webkit-scrollbar{width:0}
+
+/* 用户气泡 —— 玻璃面 ②。短文本，可以上玻璃 */
+.you{align-self:flex-end; max-width:82%; padding:9px 14px; border-radius:18px 18px 6px 18px;
+  font-size:14.5px;}
+
+/* 助手正文 —— 实底，不上玻璃。这是纪律，不是选择 */
+.claude{align-self:flex-start; max-width:88%; padding:11px 14px; border-radius:6px 18px 18px 18px;
+  background:rgba(252,252,255,.95); color:#141033;
+  font-size:14.5px; box-shadow:0 6px 22px rgba(8,4,40,.30);
+  border:1px solid rgba(255,255,255,.6);
+}
+.claude code{font:12.5px/1.4 ui-monospace,Menlo,Consolas,monospace;
+  background:rgba(20,16,51,.07); padding:1px 5px; border-radius:5px}
+
+/* 思考中 */
+.think{align-self:flex-start; display:flex;align-items:center;gap:7px;
+  padding:6px 12px; border-radius:14px; font-size:12px; color:var(--ink-dim)}
+.think i{width:5px;height:5px;border-radius:50%;background:currentColor;
+  animation:pulse 1.15s ease-in-out infinite}
+.think i:nth-child(2){animation-delay:.16s}
+.think i:nth-child(3){animation-delay:.32s}
+@keyframes pulse{0%,100%{opacity:.25;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}
+
+/* 工具卡片 —— 玻璃面 ③。到这里已经是第三块了，正文必须让位 */
+.tool{align-self:stretch; border-radius:14px; overflow:hidden; margin:1px 0}
+.tool-h{display:flex;align-items:center;gap:8px; padding:8px 11px}
+.tool-n{font:600 12.5px/1 ui-monospace,Menlo,monospace;
+  padding:3px 7px; border-radius:7px;
+  background:rgba(110,220,255,.20); color:#bfe9ff;
+  border:1px solid rgba(140,225,255,.28)}
+.tool-p{font:11.5px/1.4 ui-monospace,Menlo,Consolas,monospace;color:var(--ink-dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;flex:1}
+.tool-t{font:10.5px/1 ui-monospace,monospace;color:var(--ink-faint);flex:0 0 auto}
+.tool-o{
+  padding:0 11px 9px 11px; font:11.5px/1.5 ui-monospace,Menlo,Consolas,monospace;
+  color:var(--ink-faint); border-top:1px solid rgba(255,255,255,.07); margin-top:2px; padding-top:8px;
+  white-space:pre-wrap; word-break:break-all;
+}
+/* 危险命令：不是执行后标红，是卡片的玻璃直接换成暖色 */
+.tool.danger{border-color:rgba(255,120,120,.42)}
+.tool.danger .tool-n{background:rgba(255,90,90,.22); color:#ffc9c9;
+  border-color:rgba(255,120,120,.40)}
+.tool.danger .tool-o{color:#ffb4b4}
+
+/* 成本飘条 */
+.costline{align-self:center; font:600 11px/1 ui-monospace,monospace;
+  color:var(--ink-faint); padding:3px 10px}
+
+/* ── 底部 ───────────────────────────────────────────────── */
+.composer{
+  flex:0 0 auto; margin:8px 10px 10px; padding:9px 10px; border-radius:22px;
+  display:flex; align-items:flex-end; gap:7px;
+}
+.composer textarea{
+  flex:1; background:transparent; border:0; outline:0; resize:none;
+  color:var(--ink); font:15px/1.45 inherit; max-height:88px; padding:5px 2px;
+}
+.composer textarea::placeholder{color:var(--ink-faint)}
+.btn{border:0;cursor:pointer;font:600 12.5px/1 inherit;border-radius:15px;
+  padding:9px 13px; flex:0 0 auto; transition:transform .12s ease}
+.btn:active{transform:scale(.94)}
+.send{background:linear-gradient(135deg,#7b5cff,#4ac8ff); color:#fff;
+  box-shadow:0 5px 18px rgba(90,120,255,.42)}
+.iconbtn{background:rgba(255,255,255,.10); color:var(--ink-dim); font-size:15px;
+  border:1px solid var(--glass-stroke); padding:9px 11px}
+.iconbtn.stop{color:#ff9d9d; border-color:rgba(255,120,120,.36)}
+
+/* ── 规格面板（宽屏才出现）───────────────────────────────── */
+.spec{display:none; flex:1; min-width:0; overflow-y:auto; padding:34px 40px 60px;
+  position:relative; z-index:1}
+.spec h1{font-size:26px;letter-spacing:-.02em;margin-bottom:5px}
+.spec .sub{color:var(--ink-dim);font-size:13px;margin-bottom:26px}
+.spec h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--ink-faint);margin:26px 0 11px;font-weight:700}
+.row{display:flex;gap:9px;flex-wrap:wrap;margin-bottom:9px}
+pre{background:rgba(0,0,0,.34);border:1px solid rgba(255,255,255,.10);
+  border-radius:12px;padding:13px 15px;font:12px/1.6 ui-monospace,Menlo,Consolas,monospace;
+  overflow-x:auto;white-space:pre}
+.rule{display:flex;gap:9px;font-size:13px;color:var(--ink-dim);margin-bottom:7px;line-height:1.5}
+.rule b{color:var(--ink);font-weight:600}
+.cost{background:rgba(255,140,90,.10);border:1px solid rgba(255,140,90,.24);
+  border-radius:12px;padding:12px 15px;font-size:13px;color:#ffcfae;line-height:1.55}
+
+@media(min-width:900px){
+  body{align-items:stretch;gap:0}
+  .phone{margin:22px 0 22px 26px;height:calc(100dvh - 44px);
+    border-radius:38px;overflow:hidden;
+    box-shadow:0 30px 90px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.10)}
+  .spec{display:block}
+}
+@media(prefers-reduced-transparency:reduce){
+  .glass,.you,.tool{background:rgba(30,22,58,.94);backdrop-filter:none}
+  .claude{background:#fbfaff}
+}
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <!-- 玻璃面 ① -->
+  <div class="topbar glass">
+    <span class="dot"></span>
+    <button class="modelbtn">
+      <span class="model">opus</span>
+      <span class="backend">中转网关 · www.petarouter.com</span>
+      <span class="caret">▼</span>
+    </button>
+    <span class="meta">3 轮<br>$0.7525</span>
+  </div>
+  <div class="cwdbar glass">C:\Git-repo-AI\claude-bridge</div>
+
+  <div class="stream">
+    <div class="you glass">看看模型切换那块是怎么做的</div>
+
+    <div class="think"><i></i><i></i><i></i><span>思考中 · 12,480 tokens</span></div>
+
+    <div class="claude">
+      切换走的是「杀进程 + <code>--resume</code> 重开」。<br><br>
+      <code>--model</code> 是启动参数，活着的进程改不了；重开时带上
+      <code>--resume &lt;session-id&gt;</code> 把 CLI 会话接回来，对话就不会丢。
+    </div>
+
+    <div class="tool glass">
+      <div class="tool-h">
+        <span class="tool-n">Read</span>
+        <span class="tool-p">src\claude-session.js</span>
+        <span class="tool-t">2ms</span>
+      </div>
+      <div class="tool-o">197 行 · setModel() / spawnArgs() / pendingResume</div>
+    </div>
+
+    <div class="tool glass">
+      <div class="tool-h">
+        <span class="tool-n">Bash</span>
+        <span class="tool-p">grep -n "resume" src/claude-session.js</span>
+        <span class="tool-t">140ms</span>
+      </div>
+      <div class="tool-o">命中 4 处 → 118: args.push('--resume', sessionId)</div>
+    </div>
+
+    <div class="costline">第 1 轮 · $0.0249 · 8.2s</div>
+
+    <div class="tool glass danger">
+      <div class="tool-h">
+        <span class="tool-n">Bash</span>
+        <span class="tool-p">git push --force origin main</span>
+        <span class="tool-t">1.2s</span>
+      </div>
+      <div class="tool-o">命中危险模式 · 已记 audit.ndjson · 未拦截</div>
+    </div>
+
+    <div class="claude">
+      第 440 行有个竞态：<code>send()</code> 里的
+      <code>if (!this.isAlive()) this.start()</code>，但
+      <code>pendingResume</code> 已经被消费掉了——第三个进程起来时
+      <b>不带 --resume</b>，对话全丢。
+    </div>
+  </div>
+
+  <!-- 玻璃面 ③ -->
+  <div class="composer glass">
+    <button class="btn iconbtn stop" title="中止当前轮次">■</button>
+    <textarea rows="1" placeholder="给 Claude 发消息…"></textarea>
+    <button class="btn send">发送</button>
+    <button class="btn iconbtn kill" title="紧急停止" aria-label="紧急停止"><svg style="display:block" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 3v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></button>
+  </div>
+</div>
+
+<aside class="spec">
+  <h1>方案 A · 液态玻璃</h1>
+  <div class="sub">照抄 Apple iOS 26 Liquid Glass · demo 用的是 2026-10-10 那次真实调试内容</div>
+
+  <h2>承重的三行</h2>
+<pre>background: rgba(255,255,255,.08);
+backdrop-filter: blur(20px) saturate(180%);   /* saturate 是关键 */
+border: 1px solid rgba(255,255,255,.16);</pre>
+  <div class="rule">· <b>saturate 不能省</b>——高斯模糊会把颜色平均掉，纯 blur 出来是脏塑料。</div>
+  <div class="rule">· <b>8% 白底</b>——纯透明只有模糊没有面，不读作一块板。</div>
+  <div class="rule">· <b>1px 描边</b>——玻璃的边界是它唯一确认自己存在的地方。</div>
+
+  <h2>纪律</h2>
+  <div class="rule">· 同时最多 <b>3 个</b>毛玻璃面（顶栏 / 用户气泡 / 工具卡片 + 底部输入）。本 demo 刚好卡在上限。</div>
+  <div class="rule">· <b>长文本不上玻璃</b>。助手正文是实底 <code>rgba(252,252,255,.95)</code>——玻璃没有稳定对比度。</div>
+  <div class="rule">· 透明度有<b>梯度</b>：越靠上层越透，空间感来自这里。</div>
+  <div class="rule">· 底部 <code>@media (prefers-reduced-transparency)</code> 已给实色降级。</div>
+
+  <h2>代价</h2>
+  <div class="cost">
+    Apple 自己因为可读性被骂，<b>iOS 27 把默认透明度降下来了</b>，还加了滑块让用户自己调浓淡。
+    这一版天生要配一个浓淡开关。<br><br>
+    而这个产品一天大半时间在<b>读文字</b>——读 Claude 的回答、读文件路径。玻璃只适合 chrome，正文不敢上。
+  </div>
+
+  <h2>配色</h2>
+  <div class="row">
+    <span class="you glass" style="border-radius:12px">#5b2bd6 紫</span>
+    <span class="you glass" style="border-radius:12px">#d1348f 品红</span>
+    <span class="you glass" style="border-radius:12px">#0b7fd4 蓝</span>
+  </div>
+</aside>
+
+</body>
+</html>

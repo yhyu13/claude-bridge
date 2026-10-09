@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>方案 D · 终端控制台 Agent Console</title>
+<style>
+/* ═══════════════════════════════════════════════════════════════════
+   方案 D · 终端控制台
+   照抄对象：Claude Code 自身 / Warp / Linear 命令面板
+
+   核心：#000000 纯黑（OLED 像素熄灭 = 无限对比度），等宽字，
+   强调色直接浮在屏外。一屏塞下完整的工具调用链。
+
+   为什么这是这个产品的「原生语言」：
+   它驱动的东西就是一个终端会话。Claude Code 的输出本来就是 NDJSON、
+   本来就是等宽字体、本来就是 `--model` / `--resume` /
+   `400 model platform is not recognized` 这种行。
+   把它包装成消费级气泡，等于翻译了一遍不需要翻译的东西。
+
+   代价也在这条线上：可读性是用密度换的，不适合长时间读中文。
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root{
+  --void:#000;          /* OLED 纯黑 */
+  --panel:#0a0b0e;
+  --raised:#101319;
+  --edge:#1c2029;
+  --edge-hi:#2a303d;
+  --fg:#d7dce5;
+  --fg-dim:#7b8496;
+  --fg-faint:#4d5566;
+  --cy:#4fd6e0;         /* 路径 / 命令 */
+  --am:#ffb454;         /* 数字 / 成本 / 关键词 */
+  --mg:#ff7ad1;         /* 告警 */
+  --gr:#5fd39a;         /* 成功 */
+  --vi:#a78bfa;         /* 模型 / 后端 */
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font:400 14px/1.6 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,
+       "Liberation Mono","Microsoft YaHei Mono",monospace;
+  color:var(--fg);background:var(--void);display:flex;
+}
+
+.phone{width:100%;max-width:400px;flex:0 0 auto;margin:auto;
+  height:100dvh;display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom);position:relative}
+
+/* 顶栏：不是「卡片」，是一条状态行 */
+.topbar{flex:0 0 auto;border-bottom:1px solid var(--edge);
+  background:var(--panel);padding:8px 12px;
+  display:flex;align-items:center;gap:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--gr);flex:0 0 auto;
+  box-shadow:0 0 8px var(--gr)}
+.prompt{color:var(--vi);font-weight:600;font-size:12px;flex:0 0 auto}
+.modelbtn{display:flex;align-items:center;gap:6px;min-width:0;flex:1;
+  background:transparent;border:0;color:inherit;cursor:pointer;font:inherit;
+  padding:0;text-align:left}
+.model{color:var(--vi);font-weight:600;font-size:12.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.backend{color:var(--fg-faint);font-size:10.5px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:40%}
+.caret{color:var(--fg-faint);font-size:8px;flex:0 0 auto}
+.meta{color:var(--am);font-size:11px;flex:0 0 auto;white-space:nowrap}
+.subbar{flex:0 0 auto;border-bottom:1px solid var(--edge);
+  background:var(--void);padding:5px 12px;
+  font-size:10.5px;color:var(--fg-faint);display:flex;gap:12px;
+  white-space:nowrap;overflow:hidden}
+.subbar b{color:var(--fg-dim);font-weight:400}
+
+.stream{flex:1;overflow-y:auto;padding:12px 0 8px;font-size:13px;
+  -webkit-overflow-scrolling:touch}
+.stream::-webkit-scrollbar{width:0}
+
+/* 行号槽：让每一行都能被指认（「刚才是哪一行炸的」） */
+.line{display:flex;gap:9px;padding:0 12px;line-height:1.65}
+.ln{color:var(--fg-faint);font-size:10.5px;flex:0 0 auto;width:15px;
+  text-align:right;user-select:none;padding-top:1px}
+.lc{flex:1;min-width:0;word-break:break-word}
+
+/* 用户输入：前导 > 是唯一的身份区分，不靠气泡 */
+.line.you .lc{color:var(--fg);font-weight:600}
+.line.you .lc::before{content:'> ';color:var(--gr);font-weight:400}
+
+.line.think .lc{color:var(--fg-faint)}
+.blink{display:inline-block;width:7px;height:13px;background:var(--am);
+  vertical-align:-2px;animation:bm 1.05s steps(1) infinite}
+@keyframes bm{0%,50%{opacity:1}51%,100%{opacity:0}}
+
+/* 工具调用：把 CLI 的原生词汇直接搬上来 */
+.tool{border-left:2px solid var(--edge-hi);margin:6px 0;padding-left:0}
+.tool .hdr{color:var(--fg-faint);font-size:11px}
+.tool .hdr .nm{color:var(--cy);font-weight:600}
+.tool .hdr .ms{color:var(--fg-faint);float:right}
+.tool .arg{color:var(--fg-dim)}
+.tool .out{color:var(--fg-faint);white-space:pre-wrap;word-break:break-all;
+  border-top:1px dashed var(--edge);margin-top:5px;padding-top:5px;font-size:12px}
+.tool.danger{border-left-color:var(--mg)}
+.tool.danger .hdr .nm{color:var(--mg)}
+.tool.danger .out{color:var(--mg)}
+
+/* 轮次分隔 + 成本：像 CLI 的 result 行 */
+.result{display:flex;justify-content:space-between;gap:8px;
+  border-top:1px solid var(--edge);margin:10px 12px 0;padding:7px 0 0;
+  font-size:10.5px;color:var(--fg-faint)}
+.result .k{color:var(--am)}
+
+.k{color:var(--am)} .s{color:var(--gr)} .f{color:var(--cy)}
+.d{color:var(--fg-dim)} .w{color:var(--fg-faint)} .r{color:var(--mg)}
+.v{color:var(--vi)} .c{color:var(--fg)}
+
+.composer{flex:0 0 auto;border-top:1px solid var(--edge);background:var(--panel);
+  padding:9px 12px;display:flex;align-items:flex-end;gap:7px}
+.composer .caretline{color:var(--gr);font-weight:700;flex:0 0 auto;padding-bottom:9px}
+.composer textarea{flex:1;background:var(--void);border:1px solid var(--edge);
+  color:var(--fg);font:inherit;font-size:13.5px;line-height:1.5;
+  padding:9px 10px;border-radius:0;resize:none;outline:0;max-height:88px}
+.composer textarea:focus{border-color:var(--edge-hi)}
+.composer textarea::placeholder{color:var(--fg-faint)}
+.btn{background:var(--raised);border:1px solid var(--edge-hi);color:var(--fg-dim);
+  cursor:pointer;font:600 11px/1 inherit;padding:10px 11px;flex:0 0 auto;
+  letter-spacing:.06em;transition:border-color .12s,color .12s}
+.btn:hover{border-color:var(--fg-faint);color:var(--fg)}
+.btn.send{background:var(--gr);border-color:var(--gr);color:#04180e;font-weight:700}
+.btn.stop{color:var(--mg);border-color:rgba(255,122,209,.34)}
+.btn.kill{color:var(--fg-faint)}
+
+.spec{display:none;flex:1;min-width:0;overflow-y:auto;padding:34px 40px 60px;position:relative}
+.spec h1{font-size:26px;letter-spacing:-.02em;margin-bottom:5px;color:#fff}
+.spec .sub{color:var(--fg-dim);font-size:13px;margin-bottom:26px}
+.spec h2{font-size:11px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--fg-faint);margin:26px 0 11px;font-weight:700}
+pre{background:var(--panel);border:1px solid var(--edge);padding:14px 16px;
+  font:12px/1.7 inherit;overflow-x:auto;white-space:pre}
+.rule{display:flex;gap:9px;font-size:13px;color:var(--fg-dim);margin-bottom:8px;line-height:1.55}
+.rule b{color:var(--fg);font-weight:600}
+.pro{background:rgba(95,211,154,.07);border:1px solid rgba(95,211,154,.26);
+  padding:13px 16px;font-size:13px;color:#b6ecd2;line-height:1.6}
+.con{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.26);
+  padding:13px 16px;font-size:13px;color:#f0b6b6;line-height:1.6}
+.k{color:var(--am)}.s{color:var(--gr)}.f{color:var(--cy)}
+.r{color:var(--mg)}.v{color:var(--vi)}.d{color:var(--fg-dim)}.w{color:var(--fg-faint)}
+
+@media(min-width:900px){
+  .phone{margin:22px 0 22px 26px;height:calc(100dvh - 44px);
+    border:1px solid var(--edge)}
+  .spec{display:block}
+}
+@media(prefers-reduced-motion:reduce){.blink{animation:none}}
+</style>
+</head>
+<body>
+
+<div class="phone">
+  <div class="topbar">
+    <span class="dot"></span>
+    <span class="prompt">bridge</span>
+    <button class="modelbtn">
+      <span class="model">--model opus</span>
+      <span class="backend">→ claude-opus-4-8[1M]</span>
+      <span class="caret">▼</span>
+    </button>
+    <span class="meta">3t $0.7525</span>
+  </div>
+  <div class="subbar">
+    <span>cwd <b>C:\Git-repo-AI\claude-bridge</b></span>
+    <span>tools <b>104</b></span>
+    <span>skills <b>127</b></span>
+    <span>mcp <b>5</b></span>
+  </div>
+
+  <div class="stream">
+    <div class="line you"><span class="ln">›</span><span class="lc">看看模型切换那块是怎么做的</span></div>
+
+    <div class="line think"><span class="ln"></span><span class="lc">thinking… 12,480 tok <span class="blink"></span></span></div>
+
+    <div class="line"><span class="ln"></span><span class="lc">
+      切换走的是「杀进程 + <span class="f">--resume</span> 重开」。<br>
+      <span class="f">--model</span> 是启动参数，活着的进程改不了；重开时带上
+      <span class="f">--resume &lt;session-id&gt;</span> 把会话接回来，对话不会丢。
+    </span></div>
+
+    <div class="line tool"><span class="ln"></span><span class="lc">
+      <div class="hdr"><span class="nm">Read</span> <span class="arg">src\claude-session.js</span><span class="ms">2ms</span></div>
+      <div class="out">197 lines · setModel() spawnArgs() pendingResume</div>
+    </span></div>
+
+    <div class="line tool"><span class="ln"></span><span class="lc">
+      <div class="hdr"><span class="nm">Bash</span> <span class="arg">grep -n "resume" src/claude-session.js</span><span class="ms">140ms</span></div>
+      <div class="out">118: args.push('--resume', sessionId)</div>
+    </span></div>
+
+    <div class="line"><span class="ln"></span><span class="lc">
+      第 440 行有个竞态：<span class="f">send()</span> 里的
+      <span class="f">if (!this.isAlive()) this.start()</span>，但
+      <span class="f">pendingResume</span> 已经被消费了——第三个进程起来<b>不带 --resume</b>。
+    </span></div>
+
+    <div class="result">
+      <span><span class="k">turn_end</span> ok=<span class="s">true</span> · 8.2s · 1 turn</span>
+      <span><span class="k">$0.0249</span></span>
+    </div>
+
+    <div class="line tool danger"><span class="ln"></span><span class="lc">
+      <div class="hdr"><span class="nm">Bash</span> <span class="arg">git push --force origin main</span><span class="ms">1.2s</span></div>
+      <div class="out">! DANGEROUS PATTERN matched → audit.ndjson (not blocked)</div>
+    </span></div>
+
+    <div class="result">
+      <span>turn <b class="v">2</b> · backend <b class="v">relay</b> · session <b>a3c9b1fe</b></span>
+      <span><b class="k">$0.0281</b></span>
+    </div>
+  </div>
+
+  <div class="composer">
+    <span class="caretline">&gt;</span>
+    <textarea rows="1" placeholder="给 Claude 发消息…"></textarea>
+    <button class="btn stop" title="中止当前轮次">■</button>
+    <button class="btn send">SEND</button>
+    <button class="btn kill" title="紧急停止" aria-label="紧急停止"><svg style="display:block" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round"><path d="M12 3v9"/><path d="M18.4 6.6a9 9 0 1 1-12.8 0"/></svg></button>
+  </div>
+</div>
+
+<aside class="spec">
+  <h1>方案 D · 终端控制台</h1>
+  <div class="sub">照抄 Claude Code 自身 / Warp / Linear 命令面板 · 同一段真实调试内容</div>
+
+  <h2>为什么这是这个产品的原生语言</h2>
+  <div class="rule">它驱动的东西<b>就是一个终端会话</b>。</div>
+  <div class="rule">Claude Code 的输出本来就是 NDJSON、本来就是等宽字体、本来就是
+    <span class="f">--model</span> / <span class="f">--resume</span> /
+    <span class="r">400 model platform is not recognized</span> 这种行。</div>
+  <div class="pro">
+    把它包装成消费级气泡，等于<b>翻译了一遍不需要翻译的东西</b>。
+    用户在电脑上看到的就是这些行，手机上再翻译一遍，纯属多余。
+  </div>
+
+  <h2>承重的两条</h2>
+<pre>background: #000;          /* OLED 纯黑，像素熄灭 = 无限对比度 */
+font-family: ui-monospace, Menlo, Consolas, monospace;</pre>
+  <div class="rule">· 强调色<b>直接浮在屏外</b>：青=路径/命令，琥珀=数字/成本，紫=模型/后端，绿=成功，品红=告警。语义固定，不换。</div>
+  <div class="rule">· <b>行号槽</b>让每一行都能被指认——「刚才是哪一行炸的」。</div>
+  <div class="rule">· 用户输入只用前导 <span class="s">&gt;</span> 区分，不用气泡。这是终端的语法，不需要发明新的。</div>
+  <div class="rule">· 轮次结束渲染成 CLI 的 <span class="k">result</span> 行，成本和耗时就在那行里。</div>
+
+  <h2>它是五版里无障碍最稳的</h2>
+  <div class="pro">
+    纯黑 + 高饱和强调 = <b>对比度天花板</b>。调研里 2026 的基线是
+    「OLED 纯黑是新的默认，不达 WCAG AAA 就算不合格」。
+    这一版天然就在那条线的上方。
+  </div>
+
+  <h2>代价</h2>
+  <div class="con">
+    可读性是<b>用密度换的</b>。等宽字里的中文很难看（<span class="f">C:\Git-repo-AI</span>
+    这种路径反而很清楚）。一屏塞满之后，长时间读会累。<br><br>
+    如果你更看重「好看」而不是「像它本来的样子」，这一版会让你觉得太素。
+  </div>
+</aside>
+
+</body>
+</html>

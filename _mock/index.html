@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>claude-bridge 前端方案 · 5 个方向并排对比</title>
+<style>
+:root{
+  --bg:#08090c; --panel:#101318; --edge:#1e222b;
+  --fg:#e8ebf2; --fg2:#98a0b0; --fg3:#61697a;
+  --a:#60a5fa; --b:#ffde43; --c:#ffb454; --d:#4fd6e0; --e:#fb7185;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  background:var(--bg); color:var(--fg);
+  font:400 14px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+  padding:34px 26px 46px;
+}
+h1{font-size:25px;letter-spacing:-.02em;margin-bottom:6px}
+.lead{color:var(--fg2);font-size:14px;max-width:880px;margin-bottom:8px}
+.lead b{color:var(--fg);font-weight:600}
+.meta{color:var(--fg3);font-size:12px;font:400 12px/1.6 ui-monospace,Menlo,Consolas,monospace;
+  margin-bottom:30px}
+.note{background:var(--panel);border:1px solid var(--edge);border-radius:12px;
+  padding:13px 16px;font-size:13px;color:var(--fg2);max-width:880px;margin-bottom:34px;line-height:1.6}
+.note b{color:var(--fg);font-weight:600}
+.note.warn{border-color:rgba(251,113,133,.32);background:rgba(251,113,133,.06);color:#f2b7bf}
+
+.row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
+.col{width:272px;flex:0 0 auto}
+.head{display:flex;align-items:baseline;gap:8px;margin-bottom:4px}
+.tag{font:700 10px/1 ui-monospace,monospace;letter-spacing:.1em;
+  padding:4px 7px;border-radius:6px;color:#05070c}
+.col h2{font-size:15px;font-weight:600;letter-spacing:-.01em}
+.cap{color:var(--fg3);font-size:11.5px;line-height:1.5;margin-bottom:10px;min-height:34px}
+
+/* iframe 缩放容器：里面按真机 400×844 渲染，外面缩小到能并排看 */
+.frame{width:272px;height:574px;overflow:hidden;border-radius:16px;
+  border:1px solid var(--edge);background:#000;position:relative}
+.frame iframe{width:400px;height:844px;border:0;
+  transform:scale(.68);transform-origin:0 0;
+  position:absolute;top:0;left:0}
+.frame::after{content:'';position:absolute;inset:0;border-radius:16px;
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.05);pointer-events:none}
+
+.kv{margin-top:10px;font-size:11.5px;line-height:1.6;color:var(--fg3)}
+.kv div{margin-bottom:3px}
+.kv b{color:var(--fg2);font-weight:600}
+.open{display:inline-block;margin-top:9px;font:600 11.5px/1 inherit;
+  padding:8px 11px;border-radius:8px;border:1px solid var(--edge);
+  color:var(--fg2);text-decoration:none}
+.open:hover{border-color:var(--fg3);color:var(--fg)}
+.pick{font:700 10px/1 inherit;letter-spacing:.08em;padding:3px 6px;border-radius:5px;
+  background:rgba(74,222,128,.14);color:#7ee2a8;border:1px solid rgba(74,222,128,.3)}
+
+@media(max-width:1100px){
+  .frame{width:250px;height:528px}
+  .frame iframe{transform:scale(.625)}
+  .col{width:250px}
+}
+</style>
+</head>
+<body>
+
+<h1>claude-bridge · 手机端前端 5 个方向</h1>
+<p class="lead">
+  5 个 demo 用<b>完全一样的内容</b>——同一段 2026-10-10 的真实调试（模型切换 + close 竞态），
+  同一个工作目录、同一个模型、同一批工具卡片。并排看才有意义。
+</p>
+<p class="meta">plan 与完整设计规则 → _mock/PLAN.md ｜ demo 均为零依赖单文件，双击即开 ｜ 它们没有动 web/ 的任何一行</p>
+
+<div class="note">
+  <b>为什么是这 5 个：</b>你要的三个（浮雕 / 新野兽派 / 透明玻璃）都在，另加两个——
+  <b>终端控制台</b>是这个产品真正的原生语言，<b>可信轨迹</b>是我认为它最该有但现在没有的东西。
+</div>
+<div class="note warn">
+  <b>动手前先记住一条约束：</b><code>DESIGN.md</code> §5 是功能规格，列的东西一个都不能丢
+  （顶栏 / 消息流 / 工具卡片 / 成本条 / 输入区 / 中止 + 紧急停止 / 危险命令高亮）。
+  §5 末尾「不做代码高亮」是 <b>MVP 边界</b>，不是审美偏好——要动它是功能决定，得单独讨论。
+</div>
+
+<div class="row">
+
+  <div class="col">
+    <div class="head"><span class="tag" style="background:var(--a)">A</span><h2>液态玻璃</h2></div>
+    <div class="cap">Apple iOS 26 Liquid Glass。最好看，但正文必须实底。</div>
+    <div class="frame"><iframe src="01-liquid-glass.html" loading="lazy" title="液态玻璃"></iframe></div>
+    <div class="kv">
+      <div><b>承重</b> blur+saturate · 8%白底 · 1px描边</div>
+      <div><b>代价</b> Apple 自己因可读性把透明度降了</div>
+      <div><b>适合</b> 顶栏 / 输入框 / 面板这类 chrome</div>
+    </div>
+    <a class="open" href="01-liquid-glass.html" target="_blank">单独打开 ↗</a>
+  </div>
+
+  <div class="col">
+    <div class="head"><span class="tag" style="background:var(--b)">B</span><h2>新野兽派</h2></div>
+    <div class="cap">Gumroad / Feastables / Linear。3px 黑边 + 零模糊硬阴影。</div>
+    <div class="frame"><iframe src="02-neo-brutalist.html" loading="lazy" title="新野兽派"></iframe></div>
+    <div class="kv">
+      <div><b>承重</b> box-shadow blur=0，按下压进纸里</div>
+      <div><b>优势</b> 危险命令余光就能扫到</div>
+      <div><b>代价</b> 它本是营销页语言，密集面板会打架</div>
+    </div>
+    <a class="open" href="02-neo-brutalist.html" target="_blank">单独打开 ↗</a>
+  </div>
+
+  <div class="col">
+    <div class="head"><span class="tag" style="background:var(--c)">C</span><h2>浮雕</h2></div>
+    <div class="cap">新拟物 2.0 —— 这是修正版，因为原版对比度归零。</div>
+    <div class="frame"><iframe src="03-relief.html" loading="lazy" title="浮雕"></iframe></div>
+    <div class="kv">
+      <div><b>修正</b> 描边兜底 + 明暗阶差 + 高对比文字</div>
+      <div><b>优势</b> 盲操时凸起/凹陷比边框线好认</div>
+      <div><b>代价</b> 暗色专属，白天户外基本没法用</div>
+    </div>
+    <a class="open" href="03-relief.html" target="_blank">单独打开 ↗</a>
+  </div>
+
+  <div class="col">
+    <div class="head"><span class="tag" style="background:var(--d)">D</span><h2>终端控制台</h2>
+      <span class="pick">我推荐</span></div>
+    <div class="cap">Claude Code 自身 / Warp。#000000 OLED 黑 + 等宽字。</div>
+    <div class="frame"><iframe src="04-console.html" loading="lazy" title="终端控制台"></iframe></div>
+    <div class="kv">
+      <div><b>承重</b> 输出本来就是等宽的，别再翻译一遍</div>
+      <div><b>优势</b> 对比度天花板，无障碍最稳，信息密度最高</div>
+      <div><b>代价</b> 可读性用密度换，中文长时间读会累</div>
+    </div>
+    <a class="open" href="04-console.html" target="_blank">单独打开 ↗</a>
+  </div>
+
+  <div class="col">
+    <div class="head"><span class="tag" style="background:var(--e)">E</span><h2>可信轨迹</h2></div>
+    <div class="cap">2026 agentic UI。危险命令执行<b>前</b>先拦一次。</div>
+    <div class="frame"><iframe src="05-trust-trail.html" loading="lazy" title="可信轨迹"></iframe></div>
+    <div class="kv">
+      <div><b>论点</b> 气泡渲染「它说了什么」，这个渲染「它做了什么」</div>
+      <div><b>优势</b> 唯一把执行前拦截做进视觉语言的</div>
+      <div><b>代价</b> 唯一需要改后端的一个</div>
+    </div>
+    <a class="open" href="05-trust-trail.html" target="_blank">单独打开 ↗</a>
+  </div>
+
+</div>
+
+<div class="note" style="margin-top:36px">
+  <b>选型建议（我的排序，按「这个产品真正要解决什么」，不是按好看）：</b>
+  D 终端控制台 &gt; E 可信轨迹 &gt; A 液态玻璃 &gt; C 浮雕 &gt; B 新野兽派。<br><br>
+  <b>最省事的组合</b>：D 的骨架 + E 的拦截闸 + A 的顶栏材质。
+  如果只挑一个，我选 <b>D</b>。
+</div>
+
+</body>
+</html>
