@@ -1,0 +1,24 @@
+#!/bin/sh
+# pre-commit —— 每次提交前必过的两道闸。
+#
+# 为什么这个文件存在（一次真实的翻车）：
+#   2026-10-10 我把 5 个前端 mock 加进仓库，里面带了两个本机身份串
+#   （中转网关域名 + 本地仓库目录名）。提交前我确实跑了 scan-secrets，
+#   它是绿的 —— 因为它扫的是 **git index**，而我把它跑在了 `git add` **之前**。
+#   index 里还是旧文件集，所以那道闸绿了一个不相干的东西。
+#   两次提交之后才被下一次扫描抓到，那时候已经 push 到公开仓库了。
+#
+#   教训不是「要记得跑扫描」，是「**凭记忆决定闸的时机 = 闸形同虚设**」。
+#   时机必须由工具强制，不能靠我下一次想起来。
+#
+# 所以这里只做一件事：把闸钉在 git 自己的提交路径上。跑不掉。
+
+set -e
+
+echo "[pre-commit] scan-secrets（扫 git index —— 此时新文件已经 add 过，扫得到）"
+node tools/scan-secrets.js
+
+echo "[pre-commit] verify:quick（不调模型，不花钱）"
+npm run --silent verify:quick
+
+echo "[pre-commit] 两道闸都过了"
