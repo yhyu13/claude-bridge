@@ -52,6 +52,8 @@ h1{font-size:25px;letter-spacing:-.02em;margin-bottom:6px}
 .open:hover{border-color:var(--fg3);color:var(--fg)}
 .pick{font:700 10px/1 inherit;letter-spacing:.08em;padding:3px 6px;border-radius:5px;
   background:rgba(74,222,128,.14);color:#7ee2a8;border:1px solid rgba(74,222,128,.3)}
+.no{font:700 10px/1 inherit;letter-spacing:.08em;padding:3px 6px;border-radius:5px;
+  background:rgba(255,255,255,.05);color:var(--fg3);border:1px solid var(--edge)}
 
 @media(max-width:1100px){
   .frame{width:250px;height:528px}
@@ -62,16 +64,16 @@ h1{font-size:25px;letter-spacing:-.02em;margin-bottom:6px}
 </head>
 <body>
 
-<h1>claude-bridge · 手机端前端 5 个方向</h1>
+<h1>claude-bridge · 手机端前端 6 个方向</h1>
 <p class="lead">
-  5 个 demo 用<b>完全一样的内容</b>——同一段 2026-10-10 的真实调试（模型切换 + close 竞态），
+  6 个 demo 用<b>完全一样的内容</b>——同一段 2026-10-10 的真实调试（模型切换 + close 竞态），
   同一个工作目录、同一个模型、同一批工具卡片。并排看才有意义。
 </p>
 <p class="meta">plan 与完整设计规则 → _mock/PLAN.md ｜ demo 均为零依赖单文件，双击即开 ｜ 它们没有动 web/ 的任何一行</p>
 
 <div class="note">
-  <b>为什么是这 5 个：</b>你要的三个（浮雕 / 新野兽派 / 透明玻璃）都在，另加两个——
-  <b>终端控制台</b>是这个产品真正的原生语言，<b>可信轨迹</b>是我认为它最该有但现在没有的东西。
+  <b>为什么是这 6 个：</b>你要的三个（浮雕 / 新野兽派 / 透明玻璃）都在，另加终端控制台（这个产品真正的原生语言）和可信轨迹（它最该有但现在没有的东西）。
+  <b>B+ 是 v1 的修正版</b>，也是目前选定的方向。
 </div>
 <div class="note warn">
   <b>动手前先记住一条约束：</b><code>DESIGN.md</code> §5 是功能规格，列的东西一个都不能丢
@@ -94,15 +96,28 @@ h1{font-size:25px;letter-spacing:-.02em;margin-bottom:6px}
   </div>
 
   <div class="col">
-    <div class="head"><span class="tag" style="background:var(--b)">B</span><h2>新野兽派</h2></div>
-    <div class="cap">Gumroad / Feastables / Linear。3px 黑边 + 零模糊硬阴影。</div>
-    <div class="frame"><iframe src="02-neo-brutalist.html" loading="lazy" title="新野兽派"></iframe></div>
+    <div class="head"><span class="tag" style="background:var(--b)">B</span><h2>新野兽派 v1</h2></div>
+    <div class="cap">Gumroad / Feastables / Linear。整件衣服都穿，密集内容撑不住。</div>
+    <div class="frame"><iframe src="02-neo-brutalist.html" loading="lazy" title="新野兽派 v1"></iframe></div>
     <div class="kv">
       <div><b>承重</b> box-shadow blur=0，按下压进纸里</div>
       <div><b>优势</b> 危险命令余光就能扫到</div>
-      <div><b>代价</b> 它本是营销页语言，密集面板会打架</div>
+      <div><b>问题</b> 每张卡都同款，5 张叠下去眼睛累</div>
     </div>
     <a class="open" href="02-neo-brutalist.html" target="_blank">单独打开 ↗</a>
+  </div>
+
+  <div class="col">
+    <div class="head"><span class="tag" style="background:var(--b)">B+</span><h2>野兽派信号层</h2>
+      <span class="pick">选中方向</span></div>
+    <div class="cap">不是微调，是换了一条规则：<b>越危险越重，越密的字越轻。</b></div>
+    <div class="frame"><iframe src="06-brutalist-signals.html" loading="lazy" title="野兽派信号层"></iframe></div>
+    <div class="kv">
+      <div><b>承重</b> 三档重量，重量本身就是信息量</div>
+      <div><b>解法</b> 工具卡默认折叠成 ribbon（§5 本来就写了「可折叠」）</div>
+      <div><b>仍欠</b> 危险命令只是最丑的一块，点了照跑</div>
+    </div>
+    <a class="open" href="06-brutalist-signals.html" target="_blank">单独打开 ↗</a>
   </div>
 
   <div class="col">
@@ -119,7 +134,7 @@ h1{font-size:25px;letter-spacing:-.02em;margin-bottom:6px}
 
   <div class="col">
     <div class="head"><span class="tag" style="background:var(--d)">D</span><h2>终端控制台</h2>
-      <span class="pick">我推荐</span></div>
+      <span class="no">不选</span></div>
     <div class="cap">Claude Code 自身 / Warp。#000000 OLED 黑 + 等宽字。</div>
     <div class="frame"><iframe src="04-console.html" loading="lazy" title="终端控制台"></iframe></div>
     <div class="kv">
@@ -145,10 +160,17 @@ h1{font-size:25px;letter-spacing:-.02em;margin-bottom:6px}
 </div>
 
 <div class="note" style="margin-top:36px">
-  <b>选型建议（我的排序，按「这个产品真正要解决什么」，不是按好看）：</b>
-  D 终端控制台 &gt; E 可信轨迹 &gt; A 液态玻璃 &gt; C 浮雕 &gt; B 新野兽派。<br><br>
-  <b>最省事的组合</b>：D 的骨架 + E 的拦截闸 + A 的顶栏材质。
-  如果只挑一个，我选 <b>D</b>。
+  <b>选型已定：走 B+（野兽派信号层）。</b><br><br>
+  理由不是「最好看」，是<b>差异化</b>。终端控制面是全场最不独特的——Claude Code 像它、Warp 像它、每一个 agent console 都像它。
+  「和所有人都不一样」这件事上，野兽派是唯一真正空着的一块地。<br><br>
+  <b>唯一保留的担心</b>：这个产品的主界面恰好就是密集数据面板。B+ 用「越危险越重、越密的字越轻」这条规则处理它，
+  但真正的判据是<b>在你手机上读十分钟会不会累</b>——这个我验不了，只能你验。
+</div>
+
+<div class="note warn" style="margin-top:16px">
+  <b>B+ 还没解决的那件事：</b>危险命令在 B+ 里只是最丑的一块，<b>点了照跑</b>。
+  <code>DESIGN.md</code> §6.2 缓解措施 #4 只做到「事后高亮、不阻断」，而
+  <code>allowedTools</code> 里有 Bash。要真正堵上得配 E 的执行前拦截，那是后端改动。
 </div>
 
 </body>
