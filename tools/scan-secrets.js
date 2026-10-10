@@ -66,7 +66,10 @@ const SHAPE_RULES = [
 // 上面几条形态规则，文档和示例里大量出现正常内容，必须豁免，
 // 否则工具天天误报，两周内所有人都会开始无视它。
 const IP_ALLOW = new Set(['0.0.0.0', '127.0.0.1', '1.1.1.1', '255.255.255.255']);
-const UUID_ALLOW = /^(?:scrubbed-0000|00000000-0000-0000-0000-000000000000)$/i;
+// 258EAFA5-... 是 RFC 6455 规定的 WebSocket 握手 GUID。任何 WebSocket
+// 实现都必须原样发送它 —— 它不是会话 id，也不是任何人的标识。
+// tinyws.js（CDP 通道用的零依赖客户端）里有一个。
+const UUID_ALLOW = /^(?:scrubbed-0000|00000000-0000-0000-0000-000000000000|258EAFA5-E914-47DA-95CA-C5AB0DC85B11)$/i;
 // 家目录末段是 <name> / {{name}} / user / example 这类占位符时放过——
 // 文档里写 `C:\Users\<name>\...` 说明用法是正常的，不该报。
 const HOME_ALLOW = /^\/(?:Users|home)\/(?:user|runner|node|example|yourname)$/i;

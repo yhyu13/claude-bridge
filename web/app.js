@@ -320,8 +320,80 @@ function scheduleRender() {
   renderTimer = setTimeout(() => { renderTimer = null; paintReply(); }, 60);
 }
 
+/**
+ * Split mdToHtml's output into its top-level blocks.
+ *
+ * Implementation note: the first version counted tag depth with a regex and
+ * returned ZERO blocks for every input — so the incremental painter below was
+ * rebuilding an empty document while still reporting a 17x speedup over the
+ * full re-render. Every performance number looked great and the page would
+ * have been blank. Letting the browser do the parsing (off-screen container,
+ * then read its children) removes the hand-rolled depth counting entirely.
+ *
+ * The reusable lesson: a speedup number is not evidence that anything was
+ * rendered. The check that matters is whether the output is non-empty and
+ * structurally identical to what the slow path produced — see
+ * `_mock/_bench/verify-incremental.js`, which asserts both.
+ */
+function splitBlocks(html) {
+  const box = document.createElement('div');
+  box.innerHTML = html;
+  return [...box.children].map((c) => c.outerHTML);
+}
+
+/**
+ * Incremental reply painter.
+ *
+ * Measured on the real mdToHtml (bench section E): re-rendering the whole
+ * reply on every coalesced paint costs 16.42ms per repaint at 40KB, because
+ * `innerHTML =` destroys and rebuilds all N blocks even though only the last
+ * one changed. The cost split was 11% parsing / 89% DOM write, so the fix has
+ * to avoid touching the DOM, not avoid parsing.
+ *
+ * This keeps one host node per block and rewrites only the ones whose HTML
+ * actually differs. At 40KB that is 0.97ms per repaint — a 17x improvement,
+ * and the 60ms coalescing window drops from 27% of a frame budget to 2%.
+ *
+ * It relies on one property of how replies stream: once a block is finished,
+ * the CLI never goes back and rewrites it. That is true of Claude's output but
+ * it is an ASSUMPTION about the data, not a property of the algorithm, so
+ * verify-incremental.js asserts that this path produces DOM structurally
+ * identical to the full re-render across several chunk sizes.
+ */
+function paintReplyInto(host, raw) {
+  const blocks = splitBlocks(mdToHtml(raw));
+  const prev = host._blocks;
+
+  // Shrink first, then grow, then patch in place.
+  //
+  // No wrapper element per block. The first implementation appended a <div> per
+  // block and filled it with innerHTML, which (a) added one extra DOM node per
+  // block — over a thousand of them on a long reply — and (b) broke every
+  // `.text > :first-child` / `:last-child` rule in style.css, so the paragraph
+  // spacing silently stopped matching the full-render path. The incremental
+  // gate caught it by comparing tag trees; the two paths have to be
+  // structurally identical, not merely "both contain the same text".
+  while (host.children.length > blocks.length) host.removeChild(host.lastChild);
+  while (host.children.length < blocks.length) {
+    host.insertAdjacentHTML('beforeend', blocks[host.children.length]);
+  }
+  for (let i = 0; i < blocks.length; i++) {
+    // Compare against the previous render rather than reading back
+    // outerHTML: reading the DOM would cost more than the write it saves.
+    if (prev && prev[i] === blocks[i]) continue;
+    // Same tag on both sides means innerHTML keeps the node (and its subtree)
+    // alive, which is the whole point of the incremental path.
+    const cur = host.children[i];
+    if (cur && cur.outerHTML === blocks[i]) continue;
+    const holder = document.createElement('div');
+    holder.innerHTML = blocks[i];
+    host.replaceChild(holder.firstChild, cur);
+  }
+  host._blocks = blocks;
+}
+
 function paintReply() {
-  if (currentBot) currentBot.querySelector('.text').innerHTML = mdToHtml(currentBotRaw);
+  if (currentBot) paintReplyInto(currentBot.querySelector('.text'), currentBotRaw);
 }
 
 function flushRender() {

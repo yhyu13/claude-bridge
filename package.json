@@ -13,7 +13,8 @@
     "verify:backend": "node tools/verify-backend.js",
     "verify:scrub": "node tools/scrub-fixture.js --check docs/protocol-sample.ndjson tools/fixtures/tool-call.ndjson",
     "verify:scan": "node tools/scan-secrets.js",
-    "verify:quick": "node tools/verify-translator.js && node tools/verify-md.js && node tools/verify-wiring.js && node tools/scrub-fixture.js --check docs/protocol-sample.ndjson tools/fixtures/tool-call.ndjson && node tools/scan-secrets.js"
+    "verify:render": "node _mock/_bench/build-scene.js long && node _mock/_bench/verify-incremental.js && node _mock/_bench/verify-topbar.js",
+    "verify:quick": "node tools/verify-translator.js && node tools/verify-md.js && node tools/verify-wiring.js && node tools/scrub-fixture.js --check docs/protocol-sample.ndjson tools/fixtures/tool-call.ndjson && node tools/scan-secrets.js && node _mock/_bench/verify-incremental.js && node _mock/_bench/verify-topbar.js"
   },
   "engines": {
     "node": ">=20"

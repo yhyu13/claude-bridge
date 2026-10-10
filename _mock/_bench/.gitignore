@@ -11,14 +11,31 @@ prompt.json
 p*.json
 *.out
 *.err
+
+# 截图
 narrow-360.png
 narrow-320.png
 narrow-diag.png
-# 诊断页每次都从 web/ 的原文重新生成，进了版本库只会变成"看起来像真相的过期副本"
+round2-base.png
+r2-*.png
+r3-*.png
+r3b-*.png
+r4-*.png
+vp-*.png
+cdp390*.png
+bl.png
+
+# 诊断页每次都从 web/ 的原文重新生成，进了版本库只会变成「看起来像真相的过期副本」
+# —— 这正是 verify-topbar.js 加 mtime 检查要防的那件事
 narrow-diag-*.html
 narrow-diag.html
 longname-*.html
 live-*.html
+scene-*.html
+verify-incremental.html
+bench-live.html
+
+# 无头浏览器 profile 目录
 ep*/
 nd*/
 nw*/
@@ -30,3 +47,15 @@ dom*/
 ht*/
 w320/
 w360/
+
+# 一次性脚本：跑过就没用了，不进版本库。
+# 注意别和上面的条目粘在同一行 —— 上一版就是那么坏的，
+# 结果后面所有模式全部失效，生成物照旧进了库。
+patch-bench.js
+find-bad.js
+check-split.js
+append-agents.js
+check-state.js
+probe-detail.js
+probe.js
+.slice.txt

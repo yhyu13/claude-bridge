@@ -98,15 +98,32 @@ body > * { position: relative; z-index: 1; }
   color: var(--ink); background: var(--violet); border: 2px solid var(--ink);
   font-size: 9px; font-weight: 900; text-transform: uppercase;
   padding: 2px 5px; flex: 0 0 auto;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 42%;
+  /* 28% 而非 42%：后端名的完整值一直放在 title 里（showBackend 写的），
+     而模型名没有任何别的地方能查到。把宽度让给后者，
+     是把「可以点开看的信息」换成「只能看到一截的信息」。
+     实测 320px：backend 从 58.8 收到 47，model 从 74.2 涨到 114。 */
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 28%;
 }
 .modelbtn:active .backend { background: var(--green); }
 
+/* 紧急停止。
+ *
+ * 320px 上实测：四个汉字占 64px，是顶栏最宽的一项，而它换来的信息量
+ * 最小（用户知道自己要杀进程）。改成 ■ + 标题 tooltip 后省下 28px，
+ * 那 28px 全部让给了模型名 —— 后者从 74.2px 涨到 114px，
+ * `claude-opus-4-8[1M]` 从截断变成完整显示。
+ *
+ * 换句话说：不是把危险按钮做小，是把它从「最占地方」挪到「最不占地方」。
+ * 危险信号一点没减 —— 红色边框、红字、按下即填色，全都保留，
+ * 符合 B+ 的「越危险越重」：它仍然是顶栏唯一的红色边框控件。
+ * 视觉权重靠颜色和边框，不靠字数。 */
 .kill {
   margin-left: auto; flex: 0 0 auto;
+  width: 36px; padding: 4px 0;
   background: transparent; color: var(--red);
-  border: 2px solid var(--red); font-weight: 800;
-  font-size: 11px; padding: 3px 8px; cursor: pointer;
+  border: 2px solid var(--red); font-weight: 900;
+  font-size: 16px; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
 }
 .kill:active { background: var(--red); color: #fff; }
 
@@ -413,14 +430,19 @@ body > * { position: relative; z-index: 1; }
   border: 3px solid var(--ink); font-weight: 800; font-size: 13px; cursor: pointer;
 }
 
-/* ---------- 回到最新 ---------- */
+/* ---------- 回到最新 ----------
+   320px 截图里它压在工具卡的耗时和成败标记上 —— 恰好是那一行唯一
+   需要看清的东西（工具卡折叠时，耗时/✓/✗ 是唯一不展开就能读到的结果）。
+   抬到输入区正上方，并给一层纸色描边把它从内容上「抬起来」，
+   既有野兽派的硬边，又不会让人以为那是内容的一部分。 */
 .jump {
   position: fixed; left: 50%; transform: translateX(-50%);
-  bottom: calc(96px + env(safe-area-inset-bottom));
+  bottom: calc(104px + env(safe-area-inset-bottom));
   z-index: 8;
   background: var(--yellow); color: var(--ink);
   border: 3px solid var(--ink); box-shadow: var(--w2sh);
-  padding: 7px 15px; font-size: 12px; font-weight: 800; cursor: pointer;
+  outline: 4px solid var(--paper); outline-offset: -7px;
+  padding: 6px 14px; font-size: 12px; font-weight: 800; cursor: pointer;
 }
 .jump:active { background: var(--green); }
 
