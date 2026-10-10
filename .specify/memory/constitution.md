@@ -66,7 +66,7 @@ fixture 用 `mcp__demo__` 保留前缀，不要为了让闸闭嘴去改规则。
 
 ## 交付底线
 
-- `npm run verify:quick`（translator 49 + md 33 + wiring 31 + 脱敏 + 扫描）必须绿。
+- `npm run verify:quick`（translator 49 + md 33 + wiring 43 + 脱敏 + 扫描）必须绿。
 - 改 `web/` 下的文件要 bump `index.html` 里的 `?v=` 缓存版本号，否则手机留着旧副本。
 - 文档写"为什么"和"实测数字"，不写"已修复""已优化"这种没有证据的话。
 - 用户看得懂的优先级：先说结论和证据，再说过程。

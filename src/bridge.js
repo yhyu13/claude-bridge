@@ -245,7 +245,24 @@ const MIME = {
 
 function json(res, code, body) {
   const b = JSON.stringify(body);
-  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Content-Length': Buffer.byteLength(b) });
+  res.writeHead(code, {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Content-Length': Buffer.byteLength(b),
+    // Every JSON answer here is live state: /api/poll advances a `since` cursor,
+    // /api/status and /api/model and /api/backend all report "what is true right
+    // // now". Without an explicit no-store the browser is free to apply
+    // heuristic caching to a 200 that carries no freshness information, and then
+    // the phone renders a confidently WRONG screen after the bridge restarts —
+    // the conversation, the turn count and the cost of a process that is gone.
+    //
+    // Worse than cosmetics: a cached /api/poll?since=0 rolls `lastSeq` back, and
+    // every event between the cached seq and the real one is then skipped
+    // permanently. `fetch(..., {cache:'no-store'})` on the client is the wrong
+    // place to rely on — it depends on every browser implementing it, and the
+    // primary target here is a vendor Android build. The server has to say it.
+    'Cache-Control': 'no-store, no-cache, must-revalidate',
+    'Pragma': 'no-cache',
+  });
   res.end(b);
 }
 
@@ -329,12 +346,33 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/api/status') {
     if (!checkToken(req, url)) return json(res, 401, { error: 'bad token' });
+    // `ready` used to be null until the CLI reported, and the CLI does NOT report
+    // on spawn — under `--input-format stream-json` the first `system/init` only
+    // arrives with the FIRST PROMPT. Measured on a cold start (2026-10-10): the
+    // process was up, stderr clean, and the event stream stayed empty for 30s+,
+    // so the phone sat on 「未知目录」 with no tool count and no model name until
+    // the user typed something. First-run looked broken.
+    //
+    // The workdir is not a secret of the CLI — it came from config.json and this
+    // module has had it since construction. So report it, and SAY that it is the
+    // configured value rather than a confirmed one: `cwdFromCli` is what stops a
+    // planned fact from being read as an observed one.
+    const reported = !!ready;
     return json(res, 200, {
       ok: true,
       alive: session.isAlive(),
       turnCount,
       totalCost: Number(totalCost.toFixed(4)),
-      ready: ready ? { cwd: ready.cwd, model: ready.model, toolCount: ready.toolCount } : null,
+      ready: {
+        cwd: (ready && ready.cwd) || session.cwd,
+        cwdFromCli: !!(ready && ready.cwd),
+        // Null, not 0 and not a guess: until the CLI speaks, nobody knows which
+        // model it booted on or how many tools it can reach. The phone must be
+        // able to tell "not reported yet" from "reported zero".
+        model: (ready && ready.model) || null,
+        toolCount: ready ? ready.toolCount : null,
+        reported,
+      },
       backend: session.backendInfo(),
       model: session.modelInfo(),
     });

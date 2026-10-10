@@ -42,7 +42,13 @@ const server = http.createServer((req, res) => {
     const qs = params.toString();
     const target = BRIDGE + url + (qs ? '?' + qs : '');
     const proxyReq = http.request(target, { method: req.method, headers: { 'X-Bridge-Token': TOKEN } }, (pr) => {
-      res.writeHead(pr.statusCode || 502, { 'content-type': pr.headers['content-type'] || 'application/json' });
+      // Forward the cache directives too. Dropping them is not a neutral act:
+      // with no Cache-Control on the response the browser is free to cache
+      // /api/poll, which is how this harness reproduced a stale screen once and
+      // nearly sent me chasing a bug that was not in the product.
+      const h = { 'content-type': pr.headers['content-type'] || 'application/json' };
+      for (const k of ['cache-control', 'pragma', 'etag']) if (pr.headers[k]) h[k] = pr.headers[k];
+      res.writeHead(pr.statusCode || 502, h);
       pr.pipe(res);
     });
     proxyReq.on('error', (e) => { res.writeHead(502).end(JSON.stringify({ error: String(e) })); });

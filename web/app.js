@@ -651,7 +651,14 @@ function setLink(cls, text) {
 
 function showReady(m) {
   els.cwd.textContent = m.cwd || '(未知目录)';
-  els.cwd.title = m.cwd || '';
+  // Two different kinds of fact share this line: a cwd the CLI confirmed, and one
+  // the bridge read out of config.json and has not seen the CLI agree to yet (the
+  // CLI only reports on the first prompt). The tooltip says which, because a
+  // configured path displayed identically to a confirmed one is a confident
+  // answer the UI cannot back up.
+  els.cwd.title = m.cwdFromCli === false
+    ? `${m.cwd || ''}（配置的工作目录，Claude 尚未上报）`
+    : (m.cwd || '');
   // NOT `els.model.textContent = m.model` any more. `ready.model` is the model
   // the LAST init reported, so after a model switch it keeps naming the model we
   // just left — and pumpOnce() re-runs this on every single poll, so it would
@@ -659,17 +666,14 @@ function showReady(m) {
   // piece of UI state, both firing on a timer, is a race that resolves the same
   // wrong way every time. The model line now belongs to showModel() alone; the
   // /api/model fetch on connect covers a page that has not seen a model event.
-  // /api/status reports the last ready snapshot, and that snapshot deliberately
-  // carries only {cwd, model, toolCount} — skills and MCP counts are big and are
-  // broadcast live instead. Writing them unconditionally turned the status line
-  // into "104 个工具 · 0 技能 · 0 MCP" the moment a page resynced, i.e. a field
-  // that is absent got reported as a field that is zero. Only say what we know.
-  if (!busy) {
-    const bits = [`${m.toolCount} 个工具`];
-    if (m.skills) bits.push(`${m.skills.length} 技能`);
-    if (m.mcpServers) bits.push(`${m.mcpServers.length} MCP`);
-    setStatus(false, bits.join(' · '));
-  }
+  if (busy) return;
+  const bits = [];
+  // `!= null`, not truthy: before the CLI's first report toolCount is null, and
+  // writing "0 个工具" would be a confident lie about a number nobody has.
+  if (m.toolCount != null) bits.push(`${m.toolCount} 个工具`);
+  if (m.skills) bits.push(`${m.skills.length} 技能`);
+  if (m.mcpServers) bits.push(`${m.mcpServers.length} MCP`);
+  setStatus(false, bits.length ? bits.join(' · ') : '等待 Claude 启动…');
 }
 
 function pumpOnce() {

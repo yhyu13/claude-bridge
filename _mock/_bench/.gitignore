@@ -8,6 +8,9 @@ dm-*.err
 dom-*.txt
 dom*.err.txt
 prompt.json
+p*.json
+*.out
+*.err
 narrow-360.png
 narrow-320.png
 narrow-diag.png

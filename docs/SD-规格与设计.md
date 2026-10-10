@@ -161,7 +161,7 @@ claude CLI（2.1.288）
 
 | 层 | 命令 | 覆盖 |
 |---|---|---|
-| 纯函数 | `npm run verify:quick` | translator 49 · md 33 · wiring 31 · 脱敏 · 扫描 |
+| 纯函数 | `npm run verify:quick` | translator 49 · md 33 · wiring 43 · 脱敏 · 扫描 |
 | 真实模型 | `npm run verify:backend` | 60 项，真起 claude |
 | 接线 | `tools/verify-wiring.js` | 源码级守门，含安全边界 |
 | 窄屏 | `_mock/_bench/build-live.js` | 吃生产 CSS + 生产 DOM 原文，断言 ribbon 溢出为 0 且 `.desc` 宽度 > 0 |
