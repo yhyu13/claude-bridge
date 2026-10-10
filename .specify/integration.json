@@ -1,0 +1,15 @@
+{
+  "version": "1.1.4.dev0",
+  "integration_state_schema": 1,
+  "installed_integrations": [
+    "mcode"
+  ],
+  "integration_settings": {
+    "mcode": {
+      "script": "ps",
+      "invoke_separator": "-"
+    }
+  },
+  "integration": "mcode",
+  "default_integration": "mcode"
+}

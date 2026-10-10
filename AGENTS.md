@@ -2,7 +2,30 @@
 
 面向**在你之前没接触过这个项目的人或 agent**。目标：在一台干净的机器上把它跑起来，并且知道每一步凭什么算成功。
 
-设计原理、协议细节、踩坑记录见 [DESIGN.md](./DESIGN.md)。日常使用问题见 [README.md](./README.md)。
+文档分工（先看这张表，知道该翻哪一份）：
+
+| 你想知道 | 去翻 |
+|---|---|
+| 功能规格（做什么、界面长什么样） | [`DESIGN.md`](./DESIGN.md) — **设计真相源** |
+| 系统设计（怎么做的、边界、为什么这么取舍） | [`docs/SD-规格与设计.md`](./docs/SD-规格与设计.md) |
+| 技术决策与待办（已经定了什么、接下来做什么） | [`docs/TD-任务与技术决策.md`](./docs/TD-任务与技术决策.md) |
+| 现在到哪了 | [`docs/工作记录与待办.md`](./docs/工作记录与待办.md) |
+| **不可让步的原则** | [`.specify/memory/constitution.md`](./.specify/memory/constitution.md) |
+| 踩过的坑（§6，26 条） | 本文 |
+
+**动手之前的流程工具**（两个都装了，分工不同）：
+
+- **Spec Kit** — 管**动手之前**的规格化。`/speckit-constitution` → `/speckit-specify` →
+  `/speckit-plan` → `/speckit-tasks` → `/speckit-implement`。产物在 `.specify/`，
+  skill 装在 `.minimax/skills/speckit-*`。CLI：`specify --help`（**包名是 `specify-cli`，
+  PyPI 上没有叫 `spec-kit` 的包**）。
+- **Superpowers** — 管**动手过程中**的纪律。`superpowers:brainstorming`（写代码前先把想法说清）、
+  `superpowers:test-driven-development`（实现顺序）、`superpowers:verification-before-completion`
+  （拦住"我觉得做完了"）、`superpowers:systematic-debugging`（拦住"我猜一下改改看"）。
+
+**但真正强制的是闸，不是文档**：`.githooks/pre-commit` 会在每次提交时跑
+`scan-secrets` + `verify:quick`。文档不会拦截你，闸才会——这是本项目被坑过两次之后
+写进 constitution 的话。
 
 ---
 
@@ -284,6 +307,31 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://$IP:8787/api/status"   # 期望
 
 26. **PowerShell 5.1 发中文请求体会变成 `?`。** `Invoke-RestMethod -Body (@{text='中文'} | ConvertTo-Json)` 会按系统代码页编码，中文全丢（Claude 那边收到的就是 `? Read ??? web/style.css`）。**这不是产品 bug**，手机端发同样的内容显示正常。测试要用 UTF-8：把 JSON 以无 BOM UTF-8 写进文件，再用 `[System.IO.File]::ReadAllBytes()` 当 body 发，并带 `charset=utf-8`。
 
+27. **`git commit --amend` 改的是 HEAD，不是新建提交。** 手滑一次就把上一个提交覆盖掉了，`git log` 里那条记录整个消失，远端还指着旧的——本地"干净"、远端"分叉"，两个都是绿的。
+
+    修法：被覆盖的提交还在对象库里，`git reset --soft <那个哈希>` 就回去了；再用
+    `git diff-tree --no-commit-id --name-only -r <hash>` 列出它改过的文件，
+    `git checkout <hash> -- <那些文件>` 把内容原样还原，然后**新建**提交。
+    还原完比树：`git rev-parse "<hash>^{tree}"` 两边应该相等。
+
+    注意 `git commit -C <hash>` 会重新生成 committer date，**哈希一定对不上**，
+    所以要用 `reset` 直接把 HEAD 指回去，而不是复刻提交。
+
+28. **给一个装工具的脚本起名之前，先看它会不会被自己的规则拦下来。** 这轮装 Spec Kit
+    时两次撞上 `scan-secrets`：一次是我把真实 tailnet IP 写成了脚本默认值（**拦得对**，
+    IP 属于本机身份信息，改成命令行参数传），一次是 fixture 里用了不像假名的第三方
+    MCP 工具名。
+
+    `scan-secrets.js` 的规则是 `/mcp__(?!demo__)/`——**`demo` 是它给 fixture 预留的豁免槽**。
+    误报的正确处理是改 fixture 占那个槽，而不是给规则加白名单。规则是在 `aa74797`
+    那次泄露里真抓到过东西的，削弱它等于拆掉唯一一道防线。
+
+    这条规则的讽刺之处：**我写这条说明文字的时候也被它拦了两次**——第一次是脚本里的真 IP，
+    第二次是这条说明里举的反例本身。写文档和写代码受同一道闸管，没有例外。
+
+    同一族：`AGENTS.md` 里写文档时贴了真实的路径/IP/IPv4，同样会被 pre-commit 拦下。
+    **文档也是仓库的一部分，脱敏不只针对代码。**
+
 ---
 
 ## 7. 代码地图
@@ -299,6 +347,15 @@ tools/verify-*.js      四套功能测试
 tools/scrub-fixture.js 协议样本脱敏器。抓新样本必用
 tools/scan-secrets.js  提交前扫密钥与本机身份
 tools/fixtures/        脱敏后的真实协议样本，接线测试的基准
+docs/SD-*.md           系统设计
+docs/TD-*.md           技术决策（ADR）与待办
+docs/工作记录与待办.md   进度总表
+_mock/_bench/          实测工装。build-live.js 是窄屏闸，其余是构建脚本
+.specify/              Spec Kit：constitution、模板、PowerShell 脚本、workflow
+.minimax/skills/       Spec Kit 装到本项目的 10 个 speckit-* skill
+.githooks/pre-commit   真正的强制点：scan-secrets + verify:quick
 ```
 
 改协议时按这个顺序动：`translator.js`（纯函数）→ `bridge.js`（接线）→ `web/app.js`（渲染），每步跑 `npm run verify`。
+
+改 `web/` 里的任何文件都要 bump `index.html` 的 `?v=`，否则手机上留着旧副本。
