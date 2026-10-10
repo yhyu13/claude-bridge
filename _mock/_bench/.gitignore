@@ -57,5 +57,9 @@ check-split.js
 append-agents.js
 check-state.js
 probe-detail.js
+commit.js
 probe.js
+scrub-round2.js
+msg-round2.txt
+.gitignore.commit-msg
 .slice.txt
