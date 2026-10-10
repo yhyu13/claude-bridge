@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>narrow</title>
+<style>
+  body{margin:0;background:#1a1c22;color:#e8ebf2;
+       font:13px/1.5 "Helvetica Neue",Arial,"Microsoft YaHei",sans-serif;padding:18px}
+  .row{display:flex;gap:22px;align-items:flex-start}
+  figure{margin:0}
+  figcaption{margin-bottom:8px;font-size:12px;color:#98a0b0;font-family:Consolas,monospace}
+  .frame{border:1px solid #333;border-radius:8px;overflow:hidden;background:#000}
+  iframe{border:0;display:block}
+  .note{max-width:420px;margin-top:10px;font-size:11.5px;color:#7b8496;line-height:1.5}
+</style>
+</head>
+<body>
+<div class="row">
+  <figure>
+    <figcaption>360 × 820（常见小屏安卓）</figcaption>
+    <div class="frame" style="width:360px;height:820px">
+      <iframe src="06-brutalist-signals.html" width="360" height="820"></iframe>
+    </div>
+    <div class="note">3px 边框 ×2 + 8px 身份条 + 3px 分隔 = 每张卡先吃掉 17px 宽度</div>
+  </figure>
+
+  <figure>
+    <figcaption>320 × 820（更窄）</figcaption>
+    <div class="frame" style="width:320px;height:820px">
+      <iframe src="06-brutalist-signals.html" width="320" height="820"></iframe>
+    </div>
+    <div class="note">路径几乎全被 ellipsis 吃掉，只剩尾段——而尾段往往没有信息量</div>
+  </figure>
+</div>
+</body>
+</html>
