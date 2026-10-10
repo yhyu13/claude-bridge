@@ -144,6 +144,12 @@ if (showReadyFn) {
     'client: showReady() does not write the model line (showModel is its only writer)');
 }
 
+// One layer over the same bug: `ready` fires once per claude PROCESS, at spawn,
+// so a page opened after the spawn never gets it and the top bar keeps its "—"
+// placeholder. Zero writers is as wrong as two writers.
+ok(/\/api\/status\?t=/.test(appCode) && /showReady\(d\.ready\)/.test(appCode),
+  'client: resync() re-reads the last ready snapshot so a late-opened page still learns the cwd');
+
 // ---- report ----------------------------------------------------------------
 const total = pass + failures.length;
 if (failures.length) {

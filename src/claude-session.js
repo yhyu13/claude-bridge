@@ -108,6 +108,10 @@ class ClaudeSession extends EventEmitter {
     this.turnTimer = null;
     this.starting = false;
     this.stderrTail = [];
+    // tool_use id -> Date.now() when the call was announced. Cleared on every
+    // spawn: after a --resume the new process replays its own results, and those
+    // ids were never timed here, so carrying the old map over would only leak.
+    this.toolStarts = new Map();
   }
   /** Public description of the backend in force, for the status/ready payload. */
   backendInfo() {
@@ -199,6 +203,10 @@ class ClaudeSession extends EventEmitter {
    * implementation to keep correct, and nothing forces the two to agree.
    */
   spawnArgs() {
+    // A fresh process will report tool_use ids this instance has never timed, and
+    // drop the ones it has. Keeping a stale map across the restart would report a
+    // wrong elapsed time for a call that belongs to the previous process.
+    this.toolStarts.clear();
     const args = [
       '-p',
       '--output-format', 'stream-json',
@@ -520,6 +528,12 @@ class ClaudeSession extends EventEmitter {
           } else if (block.type === 'thinking') {
             this.emit('thinking', { index: this.inFlight?.index ?? null, text: block.thinking || '' });
           } else if (block.type === 'tool_use') {
+            // DESIGN.md §5 puts an elapsed time on every tool card, and the CLI
+            // stream does not carry one — only the turn has a duration. Start the
+            // clock here so the phone can show it. Keyed by tool_use_id, not by
+            // position: Claude can have several calls in flight at once and they
+            // finish out of order.
+            this.toolStarts.set(block.id, Date.now());
             this.emit('tool_use', {
               index: this.inFlight?.index ?? null,
               id: block.id,
@@ -543,12 +557,18 @@ class ClaudeSession extends EventEmitter {
           if (block.type === 'tool_result') {
             const c = block.content;
             const text = typeof c === 'string' ? c : JSON.stringify(c);
+            const startedAt = this.toolStarts.get(block.tool_use_id);
+            this.toolStarts.delete(block.tool_use_id);
             this.emit('tool_result', {
               index: this.inFlight?.index ?? null,
               id: block.tool_use_id,
               isError: !!block.is_error,
               text: text || '',
               bytes: Buffer.byteLength(text || '', 'utf8'),
+              // null, never 0, when the matching tool_use was never seen (a
+              // resumed session replays results without their calls). A real 0ms
+              // and "we never started the clock" must not look the same.
+              durationMs: startedAt == null ? null : Date.now() - startedAt,
             });
           }
         }

@@ -162,6 +162,10 @@ session.on('tool_result', (e) => {
           tool_use_id: e.id,
           content: e.text,
           is_error: e.isError,
+          // Carried outside the CLI-shaped block because the CLI never sends it:
+          // DESIGN.md §5 wants an elapsed time on every tool card and this layer
+          // is the only place that saw both ends of the call.
+          _durationMs: e.durationMs ?? null,
         }],
       },
     },

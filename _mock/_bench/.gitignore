@@ -3,9 +3,27 @@ bench.html
 06-brutalist-signals.html
 dom.txt
 err.txt
+dm-*.txt
+dm-*.err
+dom-*.txt
+dom*.err.txt
+prompt.json
 narrow-360.png
 narrow-320.png
+narrow-diag.png
+# 诊断页每次都从 web/ 的原文重新生成，进了版本库只会变成"看起来像真相的过期副本"
+narrow-diag-*.html
+narrow-diag.html
+longname-*.html
+live-*.html
 ep*/
+nd*/
 nw*/
+pz*/
+zz*/
+shot*/
+dt*/
+dom*/
+ht*/
 w320/
 w360/

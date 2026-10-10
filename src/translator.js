@@ -114,6 +114,11 @@ function translate(obj, ctx = {}) {
           ok: !b.is_error,
           preview: (text || '').slice(0, 2000),
           bytes: Buffer.byteLength(text || '', 'utf8'),
+          // Measured by claude-session.js across the tool_use -> tool_result pair.
+          // null means "never timed" (a replayed result after --resume), which the
+          // phone renders as a dash. It must not become 0: a real 0ms run and an
+          // untimed one are different facts.
+          durationMs: typeof b._durationMs === 'number' ? b._durationMs : null,
         };
       }
       return null;

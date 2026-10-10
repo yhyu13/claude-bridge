@@ -254,6 +254,36 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://$IP:8787/api/status"   # 期望
 
     `tools/verify-wiring.js` 第 6 组为此加了 7 条源码级守门。它们只能抓住"有人把 resync 删了"，抓不住"resync 调了但 Promise 永远不 resolve"——所以注释里写明了这个闸的边界，行为靠上面那次实测兜底。
 
+22. **页面级溢出检查抓不到内容丢失，得逐条量。** 320px 上 `document.documentElement.scrollWidth - clientWidth` 稳定等于 **0px**，而同一页里工具 ribbon 的路径列宽度是 **0px**——传了哪个文件你根本看不见。抓它的不是溢出，是 `.tool { overflow: hidden }`：溢出被裁掉了，页面看着一切正常。
+
+    所以窄屏断言必须落在**内容宽度**上，不是落在**容器溢出**上。`_mock/_bench/build-live.js` 吃的是 `web/style.css` 原文和 `web/app.js` 里 `toolShell()` 的 `s.innerHTML` 原文（不是复刻——复刻会漂移，然后照样全绿），断言两条：整条 ribbon 横向溢出为 0、`.desc` 宽度 > 0。
+
+23. **`flex-shrink` 会饿死小项，`max-width` 才是正确的闸——但两个都不够。** 工具名要截断，两版都试过：
+
+    | 写法 | 短名 `Bash` | 长 MCP 名 | 路径列 |
+    |---|---|---|---|
+    | `flex:0 0 auto` 不截断 | 正常 | 402px | **0px（没了）** |
+    | `flex:0 1 auto` + 省略号 | **15px（被饿死）** | 正常 | 正常 |
+    | `flex:0 0 auto` + `max-width:38%` | 正常 | 100.8px | 54.5px ✓ |
+
+    第二版坏在：溢出时收缩按「收缩权重 × 基准宽」分摊，`.desc` 的基准宽是整条路径（几百 px），`.name` 只有几个字母，于是**短名先被压没**。第三版让 `.desc` 成为唯一可收缩项、`.name` 只受 `max-width` 硬闸管。
+
+    顺带砍掉的：折叠行原来还想显示输出字节数，实测 ` · 12.4KB` 要多占 38px，而这 38px 正是长工具名时路径归零的原因。§5 要求的是耗时，字节数是我加的，所以字节数让位，留在展开后的 body 里。
+
+    写完必须做阳性对照：把 `max-width` 撤掉重跑，闸立刻转红（291.2px / 491.7px、路径 0px、溢出 127px / 312px）。**没验过这一下的闸等于没有闸。**
+
+24. **零个写入者和两个写入者一样错。** 第 21 条修完模型和后端，cwd 还冻在 `—`：`ready` 事件**每个 claude 进程只在启动时发一次**，所以在进程起来之后才打开的页面永远收不到它。`resync()` 现在也拉 `/api/status` 并交给原有的 `showReady()`，字段边界写在注释里。
+
+    这次顺手踩到它的反面：**把一个"字段不存在"当成"字段是 0"报出去了**。`/api/status` 的 ready 快照只带 `{cwd, model, toolCount}`，而 `showReady` 原来无条件写 `${(m.skills||[]).length} 技能`，于是每次 resync 都把正确的数字覆盖成 `104 个工具 · 0 技能 · 0 MCP`。**缺席和零是两件事。**
+
+25. **本机 Edge 无头在 Edge 154 上不可靠，别把验收押在它身上。** `--headless=new` 被静默吞掉（改 `--headless` 才认），`file://` 和 `http://127.0.0.1` 都可能整轮不出图/不出 dom，且只要用户自己开着 Edge，单实例转发就会把所有请求交给那个真实窗口。内置浏览器对桥接的真实 tailnet 地址会返回**逐字节相同的缓存快照**——换 URL 重新导航后 DOM 仍然一模一样，据此判断"页面没更新"是错的。
+
+    可用的做法：`_mock/_bench/serve.js` 静态托管 `web/` 并把 `/api/*` 反代到真桥接，页面挂在 `http://127.0.0.1:<port>/` 上跑——同一份 `app.js`、同一个真后端，只换了个源。
+
+    反代自己踩的坑：页面不带 token 时会发 `?t=&since=0`，如果按"有 `t=` 就不补"来拼，目标变成 `?t=&since=0&t=真值`，服务端读到**第一个**空值直接 401，页面一片空白，看起来像渲染坏了。**先把请求里已有的 `t=` 删掉再补。**
+
+26. **PowerShell 5.1 发中文请求体会变成 `?`。** `Invoke-RestMethod -Body (@{text='中文'} | ConvertTo-Json)` 会按系统代码页编码，中文全丢（Claude 那边收到的就是 `? Read ??? web/style.css`）。**这不是产品 bug**，手机端发同样的内容显示正常。测试要用 UTF-8：把 JSON 以无 BOM UTF-8 写进文件，再用 `[System.IO.File]::ReadAllBytes()` 当 body 发，并带 `charset=utf-8`。
+
 ---
 
 ## 7. 代码地图

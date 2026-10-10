@@ -498,15 +498,49 @@ function toolSummary(name, input) {
   return '';
 }
 
+// The identity stripe is the one bit of colour that survives folding: once a
+// ribbon is collapsed to a single line, "what kind of call was this" has to be
+// readable without opening anything. Keyed on the tool name, with MCP calls
+// keyed on their server (mcp__<server>__<tool>) so a whole server's tools land
+// on the same stripe instead of each getting a colour of its own.
+const TOOL_HUE = {
+  Bash: 'var(--green)', Read: 'var(--cyan)', Glob: 'var(--cyan)', Grep: 'var(--cyan)',
+  Write: 'var(--pink)', Edit: 'var(--pink)', NotebookEdit: 'var(--pink)',
+  Task: 'var(--violet)', WebFetch: 'var(--violet)', WebSearch: 'var(--violet)',
+  TodoWrite: 'var(--yellow)',
+};
+
+function toolStripe(name) {
+  if (TOOL_HUE[name]) return TOOL_HUE[name];
+  const mcp = /^mcp__([^_]+(?:_[^_]+)*?)__/.exec(name);
+  if (mcp) return 'var(--cyan)';
+  return 'var(--violet)';
+}
+
 function toolShell() {
   const d = document.createElement('details');
   d.className = 'tool running';
   const s = document.createElement('summary');
-  s.innerHTML = '<span class="ico"></span><span class="name"></span>'
-    + '<span class="desc"></span><span class="arrow">›</span>';
+  // Full-width ＋/－ rather than +/− and never a glyph like ⏻: the power symbol
+  // rendered as a tofu box in every mock screenshot taken on a real phone font
+  // stack, and a missing glyph is the one thing that cannot go unnoticed later.
+  s.innerHTML = '<span class="rib-id"></span>'
+    + '<span class="rib-in">'
+    + '<span class="name"></span>'
+    + '<span class="desc"></span>'
+    + '<span class="rib-t"></span>'
+    + '<span class="ico"></span>'
+    + '<span class="arrow">＋</span>'
+    + '</span>';
   const body = document.createElement('div');
   body.className = 'body';
   d.appendChild(s); d.appendChild(body);
+  // <details> has no toggle hook for the glyph on its own; without this the ＋
+  // stays ＋ after opening and the row stops telling you whether it is expanded.
+  d.addEventListener('toggle', () => {
+    const a = d.querySelector('.arrow');
+    if (a) a.textContent = d.open ? '－' : '＋';
+  });
   return d;
 }
 
@@ -515,17 +549,38 @@ function addTool(name, input, danger) {
   if (danger) d.classList.add('danger');
   d.querySelector('.name').textContent = name;
   d.querySelector('.desc').textContent = toolSummary(name, input);
-  const pre = document.createElement('pre');
+  d.querySelector('.rib-id').style.background = danger ? 'var(--ink)' : toolStripe(name);
+  d.querySelector('.rib-t').textContent = '···';  const pre = document.createElement('pre');
   pre.className = 'args';
   pre.textContent = JSON.stringify(input, null, 2);
   d.querySelector('.body').appendChild(pre);
   els.log.appendChild(d);
+  // Kept on purpose. A danger card auto-opens so the command is on screen before
+  // it is confirmed, and it also takes the W3 weight (see style.css). Folding it
+  // again to keep the column tidy would trade a safety affordance for symmetry —
+  // DESIGN.md §6.2 lists danger highlighting as mitigation #4, and this is part
+  // of it, not decoration.
   if (danger) d.open = true;
   follow();
   return d;
 }
 
-function addToolResult(id, ok, preview, bytes) {
+// ms is the server-side tool_use -> tool_result span (see claude-session.js); null
+// means the call was replayed after a --resume and never got timed, which shows
+// as a dash rather than a flattering 0.
+function fmtMs(ms) {
+  if (ms == null) return '—';
+  return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`;
+}
+
+function fmtBytes(b) {
+  if (b == null) return '';
+  if (b < 1024) return `${b}B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)}KB`;
+  return `${(b / 1024 / 1024).toFixed(1)}MB`;
+}
+
+function addToolResult(id, ok, preview, bytes, ms) {
   // The result used to be a SECOND card nested under the call card, so every
   // tool call cost two rows and the "↩ 1234B" label said nothing. Fold the
   // output into the call card and report the outcome in the same row.
@@ -542,6 +597,18 @@ function addToolResult(id, ok, preview, bytes) {
   target.classList.remove('running');
   target.classList.toggle('failed', !ok);
   target.querySelector('.ico').textContent = ok ? '✓' : '✗';
+  // The collapsed row has to answer "did it work, and how long did it take"
+  // without being opened. Folding the card hid the outcome entirely: before this
+  // the ribbon read `Read / path / 2ms` identically whether the call succeeded or
+  // blew up, which is the one thing a tool card exists to tell you.
+  //
+  // Elapsed time only — no byte count. Measured at 320px: adding " · 12.4KB"
+  // costs ~38px, which is exactly what pushed the path column down to zero on
+  // long MCP tool names. §5 asks for 耗时 on the card; bytes are my addition,
+  // so bytes are what loses. They stay on the expanded body.
+  const chip = target.querySelector('.rib-t');
+  chip.textContent = fmtMs(ms);
+  chip.classList.toggle('failed', !ok);
 
   const out = document.createElement('div');
   out.className = 'out';
@@ -592,7 +659,17 @@ function showReady(m) {
   // piece of UI state, both firing on a timer, is a race that resolves the same
   // wrong way every time. The model line now belongs to showModel() alone; the
   // /api/model fetch on connect covers a page that has not seen a model event.
-  if (!busy) setStatus(false, `${m.toolCount} 个工具 · ${(m.skills || []).length} 技能 · ${(m.mcpServers || []).length} MCP`);
+  // /api/status reports the last ready snapshot, and that snapshot deliberately
+  // carries only {cwd, model, toolCount} — skills and MCP counts are big and are
+  // broadcast live instead. Writing them unconditionally turned the status line
+  // into "104 个工具 · 0 技能 · 0 MCP" the moment a page resynced, i.e. a field
+  // that is absent got reported as a field that is zero. Only say what we know.
+  if (!busy) {
+    const bits = [`${m.toolCount} 个工具`];
+    if (m.skills) bits.push(`${m.skills.length} 技能`);
+    if (m.mcpServers) bits.push(`${m.mcpServers.length} MCP`);
+    setStatus(false, bits.join(' · '));
+  }
 }
 
 function pumpOnce() {
@@ -663,6 +740,18 @@ function resync() {
   fetch(`/api/model?t=${encodeURIComponent(T)}`, { cache: 'no-store' })
     .then((r) => (r.ok ? r.json() : null))
     .then((d) => { if (d) showModel(d); })
+    .catch(() => { /* offline; the poll loop will retry */ });
+
+  // `ready` carries cwd / toolCount, and it fires exactly once per claude
+  // process — at spawn. A page opened AFTER that spawn therefore never receives
+  // it: the top bar sat on its "—" placeholder indefinitely, which is the same
+  // failure as the frozen model chip, one layer over. /api/status reports the
+  // last ready snapshot, so pull it here and hand it to the existing writer.
+  // showReady() deliberately does not touch the model line (see its comment):
+  // this must not become a second writer for that state.
+  fetch(`/api/status?t=${encodeURIComponent(T)}`, { cache: 'no-store' })
+    .then((r) => (r.ok ? r.json() : null))
+    .then((d) => { if (d && d.ready) showReady(d.ready); })
     .catch(() => { /* offline; the poll loop will retry */ });
 }
 
@@ -740,7 +829,7 @@ function handle(m) {
     }
 
     case 'tool_result':
-      addToolResult(m.id, m.ok, m.preview, m.bytes);
+      addToolResult(m.id, m.ok, m.preview, m.bytes, m.durationMs);
       break;
 
     case 'alert':

@@ -71,6 +71,15 @@ check('has tool_use id', !!(rm && rm.id));
 check('preview is a string', !!(rm && typeof rm.preview === 'string'));
 check('bytes is a number', !!(rm && typeof rm.bytes === 'number'));
 
+// Elapsed time per tool call. The CLI stream carries none, so bridge.js injects
+// it as `_durationMs` on the block and the phone renders it as §5's "耗时".
+// Two things have to hold: a real number survives, and an untimed result stays
+// null instead of collapsing into 0 — "0ms" and "we never started the clock"
+// are different facts and the chip must not claim the wrong one.
+const timed = translate({ ...tr, message: { content: [{ ...tr.message.content.find((c) => c.type === 'tool_result'), _durationMs: 1234 }] } }, { turnIndex: 1 });
+check('durationMs passes through as a number', timed && timed.durationMs === 1234, timed && timed.durationMs);
+check('durationMs is null when the call was never timed', rm.durationMs === null, rm.durationMs);
+
 console.log('\n[6] result -> turn_end');
 const res = lines.find((o) => o.type === 'result');
 const em = translate(res, {});
